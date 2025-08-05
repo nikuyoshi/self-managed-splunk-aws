@@ -1,0 +1,389 @@
+import * as cdk from 'aws-cdk-lib';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as iam from 'aws-cdk-lib/aws-iam';
+// ALB imports removed - using Elastic IP instead
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as s3_assets from 'aws-cdk-lib/aws-s3-assets';
+import { Construct } from 'constructs';
+import { SplunkConfig, defaultTags } from '../config/splunk-config';
+import { SplunkDownloadHelper } from './utils/splunk-download-helper';
+import { ESDownloadHelper } from './utils/es-download-helper';
+
+export interface SplunkEsStackProps extends cdk.StackProps {
+  config: SplunkConfig;
+  vpc: ec2.Vpc;
+  splunkSecurityGroup: ec2.SecurityGroup;
+  clusterManagerIp: string;
+  splunkAdminSecret: secretsmanager.Secret;
+}
+
+export class SplunkEsStack extends cdk.Stack {
+  public readonly esSearchHead: ec2.Instance;
+  public readonly elasticIp: string;
+
+  constructor(scope: Construct, id: string, props: SplunkEsStackProps) {
+    super(scope, id, props);
+
+    const { 
+      config, 
+      vpc, 
+      splunkSecurityGroup,
+      clusterManagerIp,
+      splunkAdminSecret
+    } = props;
+
+    // Get ES package info
+    const esPackageInfo = ESDownloadHelper.getLocalPackageInfo(config);
+    let esAsset: s3_assets.Asset | undefined;
+    let esPackageS3Path: string = '';
+
+    if (esPackageInfo) {
+      // Create S3 asset from local ES package
+      esAsset = new s3_assets.Asset(this, 'ESPackageAsset', {
+        path: esPackageInfo.path,
+      });
+      esPackageS3Path = esAsset.s3ObjectUrl;
+    }
+
+    // Create IAM role for ES Search Head
+    const esSearchHeadRole = new iam.Role(this, 'EsSearchHeadRole', {
+      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('CloudWatchAgentServerPolicy'),
+      ],
+    });
+
+    // Grant read access to the secret
+    splunkAdminSecret.grantRead(esSearchHeadRole);
+
+    // Grant read access to ES package in S3 if it exists
+    if (esAsset) {
+      esAsset.grantRead(esSearchHeadRole);
+    }
+
+    // Get latest Amazon Linux 2023 AMI
+    const ami = ec2.MachineImage.latestAmazonLinux2023({
+      cpuType: ec2.AmazonLinuxCpuType.X86_64,
+    });
+
+    // Create ES Search Head instance
+    this.esSearchHead = new ec2.Instance(this, 'EsSearchHead', {
+      vpc,
+      instanceType: new ec2.InstanceType(config.esSearchHeadInstanceType),
+      machineImage: ami,
+      securityGroup: splunkSecurityGroup,
+      role: esSearchHeadRole,
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PUBLIC,
+      },
+      associatePublicIpAddress: true,
+      blockDevices: [
+        {
+          deviceName: '/dev/xvda',
+          volume: ec2.BlockDeviceVolume.ebs(100, {
+            volumeType: ec2.EbsDeviceVolumeType.GP3,
+            encrypted: config.enableEncryption,
+          }),
+        },
+        {
+          deviceName: '/dev/xvdb',
+          volume: ec2.BlockDeviceVolume.ebs(config.esDataModelVolumeSize, {
+            volumeType: ec2.EbsDeviceVolumeType.GP3,
+            encrypted: config.enableEncryption,
+          }),
+        },
+      ],
+    });
+
+    // Validate Splunk configuration
+    SplunkDownloadHelper.validateConfig(config);
+
+    // UserData for ES Search Head
+    this.esSearchHead.userData.addCommands(
+      '#!/bin/bash',
+      'set -e',
+      'yum update -y',
+      '# Fix curl package conflict in AL2023',
+      'dnf swap -y curl-minimal curl || true',
+      'yum install -y wget unzip jq',
+      '',
+      '# Create mount point for data models',
+      'mkdir -p /opt/splunk/var/lib/splunk',
+      'mkfs -t xfs /dev/xvdb || true',
+      'mount /dev/xvdb /opt/splunk/var/lib/splunk',
+      'echo "/dev/xvdb /opt/splunk/var/lib/splunk xfs defaults,nofail 0 2" >> /etc/fstab',
+      '',
+      ...SplunkDownloadHelper.generateDownloadScript(config),
+      '',
+      '# Get admin password from Secrets Manager',
+      `ADMIN_PASSWORD=$(aws secretsmanager get-secret-value --secret-id ${splunkAdminSecret.secretArn} --query 'SecretString' --output text --region ${this.region} | jq -r '.password')`,
+      '',
+      '# Ensure clean start - remove existing passwd file if exists',
+      'if [ -f /opt/splunk/etc/passwd ]; then',
+      '  echo "Removing existing passwd file for clean start"',
+      '  rm -f /opt/splunk/etc/passwd',
+      'fi',
+      '',
+      '# Create user-seed.conf for initial admin user',
+      'mkdir -p /opt/splunk/etc/system/local',
+      'cat > /opt/splunk/etc/system/local/user-seed.conf << EOF',
+      '[user_info]',
+      'USERNAME = admin',
+      'PASSWORD = $ADMIN_PASSWORD',
+      'EOF',
+      '',
+      '# Start Splunk and accept license',
+      '/opt/splunk/bin/splunk start --accept-license --answer-yes --no-prompt',
+      '',
+      '# Enable boot start',
+      '/opt/splunk/bin/splunk enable boot-start -user root',
+      '',
+      '# Wait for Splunk to fully start and initialize',
+      'echo "Waiting for Splunk to initialize..."',
+      'for i in {1..12}; do',
+      '  if /opt/splunk/bin/splunk list user -auth admin:$ADMIN_PASSWORD >/dev/null 2>&1; then',
+      '    echo "Admin user verified successfully"',
+      '    break',
+      '  fi',
+      '  echo "Waiting for admin user to be ready... ($i/12)"',
+      '  sleep 5',
+      'done',
+      '',
+      '# Remove user-seed.conf after successful initialization',
+      'rm -f /opt/splunk/etc/system/local/user-seed.conf',
+      '',
+      '# Configure as Search Head',
+      `/opt/splunk/bin/splunk edit cluster-config -mode searchhead -manager_uri https://${clusterManagerIp}:8089 -secret clustersecret -auth admin:$ADMIN_PASSWORD || echo "Failed to configure cluster mode"`,
+      '',
+      '# Enable web interface',
+      '/opt/splunk/bin/splunk set web-ssl 0 -auth admin:$ADMIN_PASSWORD || echo "Failed to disable web SSL"',
+      '',
+      '# Create ES indexes',
+      '/opt/splunk/bin/splunk add index main -auth admin:$ADMIN_PASSWORD || true',
+      '/opt/splunk/bin/splunk add index summary -auth admin:$ADMIN_PASSWORD || true',
+      '/opt/splunk/bin/splunk add index risk -auth admin:$ADMIN_PASSWORD || true',
+      '/opt/splunk/bin/splunk add index notable -auth admin:$ADMIN_PASSWORD || true',
+      '/opt/splunk/bin/splunk add index threat_intel -auth admin:$ADMIN_PASSWORD || true',
+      '',
+      '# Create additional security indexes',
+      '/opt/splunk/bin/splunk add index firewall -auth admin:$ADMIN_PASSWORD || true',
+      '/opt/splunk/bin/splunk add index proxy -auth admin:$ADMIN_PASSWORD || true',
+      '/opt/splunk/bin/splunk add index endpoint -auth admin:$ADMIN_PASSWORD || true',
+      '/opt/splunk/bin/splunk add index authentication -auth admin:$ADMIN_PASSWORD || true',
+      '',
+      '# Configure data model acceleration',
+      'mkdir -p /opt/splunk/etc/apps/SA-Utils/local',
+      'cat > /opt/splunk/etc/apps/SA-Utils/local/datamodels.conf << EOF',
+      '[Authentication]',
+      'acceleration = 1',
+      'acceleration.earliest_time = -7d',
+      '',
+      '[Network_Traffic]',
+      'acceleration = 1',
+      'acceleration.earliest_time = -7d',
+      '',
+      '[Web]',
+      'acceleration = 1',
+      'acceleration.earliest_time = -7d',
+      '',
+      '[Endpoint]',
+      'acceleration = 1',
+      'acceleration.earliest_time = -7d',
+      'EOF',
+      '',
+      '# === Configure distributed search for all indexers ===',
+      'echo "=== Configuring distributed search for all indexers ==="',
+      '',
+      '# Wait for expected number of indexers to join the cluster',
+      'EXPECTED_INDEXERS=3',
+      'MAX_WAIT_TIME=600  # 10 minutes',
+      'WAIT_INTERVAL=30   # 30 seconds',
+      'ELAPSED=0',
+      '',
+      'echo "Waiting for $EXPECTED_INDEXERS indexers to join the cluster..."',
+      '',
+      'while [ $ELAPSED -lt $MAX_WAIT_TIME ]; do',
+      '  # Get current peer count from cluster status',
+      '  PEER_COUNT=$(/opt/splunk/bin/splunk show cluster-status -auth admin:$ADMIN_PASSWORD 2>/dev/null | grep -c "Peer name:" || echo "0")',
+      '  PEER_COUNT=$(echo "$PEER_COUNT" | head -1 | tr -d "\\n")',
+      '  ',
+      '  if [ "$PEER_COUNT" -ge "$EXPECTED_INDEXERS" ]; then',
+      '    echo "✅ Found $PEER_COUNT indexers in the cluster"',
+      '    break',
+      '  fi',
+      '  ',
+      '  echo "⏳ Currently $PEER_COUNT/$EXPECTED_INDEXERS indexers in cluster. Waiting..."',
+      '  sleep $WAIT_INTERVAL',
+      '  ELAPSED=$((ELAPSED + WAIT_INTERVAL))',
+      'done',
+      '',
+      'if [ "$PEER_COUNT" -lt "$EXPECTED_INDEXERS" ]; then',
+      '  echo "⚠️  Warning: Only found $PEER_COUNT indexers after waiting $ELAPSED seconds"',
+      '  echo "⚠️  Proceeding with available indexers..."',
+      'fi',
+      '',
+      '# Configure distributed search for all cluster peers',
+      'echo "Adding cluster peers as search servers..."',
+      'ADDED_COUNT=0',
+      'FAILED_COUNT=0',
+      '',
+      '# Get list of all peers and their details',
+      '/opt/splunk/bin/splunk show cluster-status -auth admin:$ADMIN_PASSWORD 2>/dev/null | grep -A2 "Peer name:" | while read -r line; do',
+      '  if [[ "$line" =~ "Peer name:" ]]; then',
+      '    PEER_NAME=$(echo "$line" | awk -F": " \'{print $2}\')',
+      '  elif [[ "$line" =~ "Peer site:" ]]; then',
+      '    PEER_SITE=$(echo "$line" | awk -F": " \'{print $2}\')',
+      '    # Get the host info which is in format "host:port"',
+      '    PEER_HOST_INFO=$(/opt/splunk/bin/splunk list cluster-peers -auth admin:$ADMIN_PASSWORD 2>/dev/null | grep -A5 "$PEER_NAME" | grep "Host name:" | awk \'{print $3}\')',
+      '    PEER_IP=$(echo "$PEER_HOST_INFO" | cut -d: -f1)',
+      '    ',
+      '    if [ -z "$PEER_IP" ]; then',
+      '      echo "❌ Could not determine IP for peer $PEER_NAME"',
+      '      FAILED_COUNT=$((FAILED_COUNT + 1))',
+      '      continue',
+      '    fi',
+      '    ',
+      '    echo "Adding search server: $PEER_IP (Name: $PEER_NAME)"',
+      '    ',
+      '    # Try to add the search server',
+      '    if /opt/splunk/bin/splunk add search-server https://$PEER_IP:8089 -auth admin:$ADMIN_PASSWORD -remoteUsername admin -remotePassword $ADMIN_PASSWORD 2>&1; then',
+      '      echo "✅ Successfully added $PEER_IP as search server"',
+      '      ADDED_COUNT=$((ADDED_COUNT + 1))',
+      '    else',
+      '      # Check if already exists',
+      '      if /opt/splunk/bin/splunk list search-server -auth admin:$ADMIN_PASSWORD 2>/dev/null | grep -q "$PEER_IP"; then',
+      '        echo "ℹ️  Search server $PEER_IP already configured"',
+      '        ADDED_COUNT=$((ADDED_COUNT + 1))',
+      '      else',
+      '        echo "❌ Failed to add $PEER_IP as search server"',
+      '        FAILED_COUNT=$((FAILED_COUNT + 1))',
+      '      fi',
+      '    fi',
+      '  fi',
+      'done',
+      '',
+      'echo "=== Distributed search configuration complete ==="',
+      'echo "✅ Added/verified $ADDED_COUNT search servers"',
+      'if [ $FAILED_COUNT -gt 0 ]; then',
+      '  echo "⚠️  Failed to add $FAILED_COUNT search servers"',
+      'fi',
+      '',
+      '# Verify distributed search configuration',
+      'echo "=== Verifying distributed search configuration ==="',
+      '/opt/splunk/bin/splunk list search-server -auth admin:$ADMIN_PASSWORD || echo "⚠️  Could not list search servers"',
+      '',
+      '# Restart Splunk to ensure all configurations are loaded',
+      'echo "=== Restarting Splunk after distributed search configuration ==="',
+      '/opt/splunk/bin/splunk restart',
+      '');
+
+    // Add ES package download and installation if available
+    if (esAsset && esPackageInfo) {
+      this.esSearchHead.userData.addCommands(
+        '',
+        '# Download ES package from S3',
+        'echo "Downloading Enterprise Security package from S3..."',
+        `aws s3 cp ${esPackageS3Path} /tmp/${esPackageInfo.filename}`,
+        '',
+        ...ESDownloadHelper.generateInstallScript(config, `/tmp/${esPackageInfo.filename}`),
+        '',
+        '# Restart Splunk after ES installation',
+        '/opt/splunk/bin/splunk restart',
+        '',
+        ...ESDownloadHelper.generateHealthCheckScript()
+      );
+    } else {
+      this.esSearchHead.userData.addCommands(
+        '',
+        '# Enterprise Security package not found',
+        'echo "WARNING: ES package not found. Please install Enterprise Security manually."',
+        'echo "To install ES manually:"',
+        'echo "1. Download ES from https://splunkbase.splunk.com/app/263"',
+        'echo "2. Upload to this server"',
+        'echo "3. Run: /opt/splunk/bin/splunk install app <es-package.tgz> -auth admin:<password>"',
+        '',
+        '# Restart Splunk',
+        '/opt/splunk/bin/splunk restart'
+      );
+    }
+
+    this.esSearchHead.userData.addCommands(
+      '',
+      'echo "ES Search Head setup complete."'
+    );
+
+    // Create Elastic IP
+    const eip = new ec2.CfnEIP(this, 'EsSearchHeadEIP', {
+      domain: 'vpc',
+      tags: [{
+        key: 'Name',
+        value: `${this.stackName}-EsSearchHead-EIP`,
+      }],
+    });
+
+    // Associate Elastic IP with the instance
+    new ec2.CfnEIPAssociation(this, 'EsSearchHeadEIPAssoc', {
+      allocationId: eip.attrAllocationId,
+      instanceId: this.esSearchHead.instanceId,
+    });
+
+    // Store Elastic IP
+    this.elasticIp = eip.attrPublicIp;
+
+    // Allow inbound traffic on port 8000 from anywhere (restrict in production)
+    this.esSearchHead.connections.allowFromAnyIpv4(
+      ec2.Port.tcp(8000),
+      'Allow Splunk Web UI access'
+    );
+
+    // Apply tags to all resources in this stack
+    cdk.Tags.of(this).add('splunkit_environment_type', defaultTags.splunkit_environment_type);
+    cdk.Tags.of(this).add('splunkit_data_classification', defaultTags.splunkit_data_classification);
+    if (defaultTags.project) {
+      cdk.Tags.of(this).add('Project', defaultTags.project);
+    }
+    if (defaultTags.owner) {
+      cdk.Tags.of(this).add('Owner', defaultTags.owner);
+    }
+    if (defaultTags.costCenter) {
+      cdk.Tags.of(this).add('CostCenter', defaultTags.costCenter);
+    }
+
+    // Outputs
+    new cdk.CfnOutput(this, 'EsSearchHeadPrivateIp', {
+      value: this.esSearchHead.instancePrivateIp,
+      exportName: `${this.stackName}-EsSearchHeadIP`,
+    });
+
+    new cdk.CfnOutput(this, 'EsWebUrl', {
+      value: `http://${this.elasticIp}:8000`,
+      description: 'ES Search Head Web UI URL',
+    });
+
+    new cdk.CfnOutput(this, 'EsSearchHeadElasticIP', {
+      value: this.elasticIp,
+      description: 'Elastic IP address of the ES Search Head',
+    });
+
+    new cdk.CfnOutput(this, 'EsAdminSecretConsoleUrl', {
+      value: `https://console.aws.amazon.com/secretsmanager/secret?name=${splunkAdminSecret.secretName}&region=${this.region}`,
+      description: 'Direct link to the Splunk admin password in AWS Secrets Manager',
+    });
+
+    new cdk.CfnOutput(this, 'EsSearchHeadSessionManagerCommand', {
+      value: `aws ssm start-session --target ${this.esSearchHead.instanceId}`,
+      description: 'Command to connect to ES Search Head via Session Manager',
+    });
+
+    new cdk.CfnOutput(this, 'EsConfiguration', {
+      value: `Instance Type: ${config.esSearchHeadInstanceType} | System Storage: 100GB | Data Model Storage: ${config.esDataModelVolumeSize}GB`,
+      description: 'Enterprise Security configuration summary',
+    });
+
+    new cdk.CfnOutput(this, 'EsPackageStatus', {
+      value: esAsset ? 'ES package will be automatically installed during deployment' : 'ES package not found - manual installation required',
+      description: 'Enterprise Security package installation status',
+    });
+  }
+}

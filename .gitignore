@@ -1,0 +1,24 @@
+*.js
+!jest.config.js
+*.d.ts
+node_modules
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+
+# Splunk packages
+packages/*.tgz
+packages/*.tar.gz
+packages/*.spl
+# Keep README
+!packages/README.md
+
+# Deployment logs
+deployment-*.log
+
+# CDK context file (contains AWS account ID)
+cdk.context.json
+
+# Test files that may contain sensitive data
+search-head-quick-test.txt
