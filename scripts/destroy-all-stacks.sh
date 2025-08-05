@@ -62,9 +62,19 @@ DELETION_ORDER=(
 
 # Process stacks in order
 for stack_name in "${DELETION_ORDER[@]}"; do
-    # Check if this stack exists in the active stacks
-    if [[ " ${STACK_ARRAY[@]} " =~ " ${stack_name} " ]]; then
-        echo "🔄 Deleting stack: $stack_name"
+    # Check if this stack currently exists (dynamic check)
+    CURRENT_STATUS=$(aws cloudformation describe-stacks \
+        --stack-name "$stack_name" $PROFILE \
+        --query 'Stacks[0].StackStatus' \
+        --output text 2>/dev/null)
+    
+    if [ $? -ne 0 ]; then
+        echo "ℹ️  Stack $stack_name does not exist or already deleted, skipping..."
+        continue
+    fi
+    
+    if [[ "$CURRENT_STATUS" == "CREATE_COMPLETE" ]] || [[ "$CURRENT_STATUS" == "UPDATE_COMPLETE" ]]; then
+        echo "🔄 Deleting stack: $stack_name (current status: $CURRENT_STATUS)"
         
         # Delete the stack
         DELETE_OUTPUT=$(aws cloudformation delete-stack --stack-name "$stack_name" $PROFILE 2>&1)
@@ -75,7 +85,7 @@ for stack_name in "${DELETION_ORDER[@]}"; do
             
             # Wait for deletion with timeout handling
             set +e  # Temporarily disable exit on error
-            timeout_seconds=300  # 5 minutes timeout
+            timeout_seconds=900  # 15 minutes timeout
             start_time=$(date +%s)
             deletion_started=false
             
@@ -113,7 +123,41 @@ for stack_name in "${DELETION_ORDER[@]}"; do
                 if [ $elapsed -gt $timeout_seconds ]; then
                     echo "⚠️  Timeout waiting for deletion of: $stack_name"
                     echo "    Stack status: $STACK_STATUS"
-                    if [[ "$STACK_STATUS" == "CREATE_COMPLETE" ]] || [[ "$STACK_STATUS" == "UPDATE_COMPLETE" ]]; then
+                    
+                    if [[ "$STACK_STATUS" == "DELETE_IN_PROGRESS" ]]; then
+                        echo "    Stack is still deleting. Giving additional 5 minutes..."
+                        additional_wait=300  # 5 more minutes
+                        additional_start=$(date +%s)
+                        
+                        while [ $(($(date +%s) - additional_start)) -lt $additional_wait ]; do
+                            STACK_STATUS=$(aws cloudformation describe-stacks \
+                                --stack-name "$stack_name" $PROFILE \
+                                --query 'Stacks[0].StackStatus' \
+                                --output text 2>/dev/null)
+                            
+                            if [ $? -ne 0 ]; then
+                                echo "✅ Successfully deleted: $stack_name (completed during extended wait)"
+                                break 2  # Break out of both loops
+                            fi
+                            
+                            echo -n "+"
+                            sleep 15
+                        done
+                        
+                        # Final check after additional wait
+                        STACK_STATUS=$(aws cloudformation describe-stacks \
+                            --stack-name "$stack_name" $PROFILE \
+                            --query 'Stacks[0].StackStatus' \
+                            --output text 2>/dev/null)
+                        
+                        if [ $? -ne 0 ]; then
+                            echo "✅ Successfully deleted: $stack_name (completed after extended wait)"
+                            break
+                        else
+                            echo ""
+                            echo "    Stack still exists after additional wait. Status: $STACK_STATUS"
+                        fi
+                    elif [[ "$STACK_STATUS" == "CREATE_COMPLETE" ]] || [[ "$STACK_STATUS" == "UPDATE_COMPLETE" ]]; then
                         echo "    Stack deletion was not initiated. You may need to manually delete this stack."
                     fi
                     echo "    Continuing with next stack..."
@@ -132,6 +176,42 @@ for stack_name in "${DELETION_ORDER[@]}"; do
             echo "    Continuing with next stack..."
         fi
         echo
+    elif [[ "$CURRENT_STATUS" == "DELETE_IN_PROGRESS" ]]; then
+        echo "ℹ️  Stack $stack_name is already being deleted, monitoring progress..."
+        
+        # Monitor the already in-progress deletion
+        set +e
+        start_time=$(date +%s)
+        timeout_seconds=900  # 15 minutes timeout
+        
+        while true; do
+            STACK_STATUS=$(aws cloudformation describe-stacks \
+                --stack-name "$stack_name" $PROFILE \
+                --query 'Stacks[0].StackStatus' \
+                --output text 2>/dev/null)
+            
+            if [ $? -ne 0 ]; then
+                echo "✅ Successfully deleted: $stack_name"
+                break
+            fi
+            
+            # Check for timeout
+            current_time=$(date +%s)
+            elapsed=$((current_time - start_time))
+            if [ $elapsed -gt $timeout_seconds ]; then
+                echo "⚠️  Timeout monitoring deletion of: $stack_name"
+                echo "    Stack status: $STACK_STATUS"
+                echo "    Continuing with next stack..."
+                break
+            fi
+            
+            echo -n "."
+            sleep 10
+        done
+        set -e
+        echo
+    else
+        echo "ℹ️  Stack $stack_name has status: $CURRENT_STATUS, skipping..."
     fi
 done
 
