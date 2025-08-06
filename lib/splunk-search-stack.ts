@@ -6,6 +6,7 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import { SplunkConfig, defaultTags } from '../config/splunk-config';
 import { SplunkDownloadHelper } from './utils/splunk-download-helper';
+import { LicenseHelper } from './utils/license-helper';
 
 export interface SplunkSearchStackProps extends cdk.StackProps {
   config: SplunkConfig;
@@ -141,6 +142,11 @@ export class SplunkSearchStack extends cdk.Stack {
       '',
       '# Web interface is already accessible on port 8000 without SSL',
       '# Skipping web-ssl configuration as the command syntax is incorrect',
+      '',
+      '# Configure license peer if license is enabled',
+      ...config.enableLicenseInstall ? 
+        LicenseHelper.generateLicensePeerScript(clusterManagerIp) : 
+        [],
       '',
       '# Restart Splunk (as splunk user)',
       'sudo -u splunk /opt/splunk/bin/splunk restart',

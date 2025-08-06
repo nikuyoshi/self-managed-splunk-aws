@@ -269,6 +269,24 @@ This script will:
    export ENABLE_ES=true
    npx cdk deploy --all --profile <your-profile-name>
    ```
+   
+   **Option C: Deployment with License**
+   
+   If you have a Splunk Enterprise license:
+   ```bash
+   # Create licenses directory
+   mkdir -p licenses
+   
+   # Place your license file in the directory
+   # Supported formats: .xml, .lic, .License
+   # Example: licenses/Splunk.License
+   
+   # Edit config/splunk-config.ts and set:
+   # enableLicenseInstall: true
+   
+   # Deploy all stacks
+   npx cdk deploy --all --profile <your-profile-name>
+   ```
 
 ### Deployment Time Estimation
 
@@ -824,6 +842,24 @@ graph TB
    npx cdk deploy --all
    # または特定のプロファイルで
    export ENABLE_ES=true
+   npx cdk deploy --all --profile <your-profile-name>
+   ```
+   
+   **オプションC: ライセンス付きデプロイ**
+   
+   Splunk Enterpriseライセンスをお持ちの場合：
+   ```bash
+   # licensesディレクトリを作成
+   mkdir -p licenses
+   
+   # ライセンスファイルをディレクトリに配置
+   # サポート形式: .xml, .lic, .License
+   # 例: licenses/Splunk.License
+   
+   # config/splunk-config.tsを編集して設定:
+   # enableLicenseInstall: true
+   
+   # 全スタックをデプロイ
    npx cdk deploy --all --profile <your-profile-name>
    ```
 

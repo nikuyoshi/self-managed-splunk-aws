@@ -3,9 +3,11 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as s3_assets from 'aws-cdk-lib/aws-s3-assets';
 import { Construct } from 'constructs';
 import { SplunkConfig, defaultTags } from '../config/splunk-config';
 import { SplunkDownloadHelper } from './utils/splunk-download-helper';
+import { LicenseHelper } from './utils/license-helper';
 import { IndexerInstanceResolver } from './constructs/indexer-instance-resolver';
 
 export interface SplunkClusterStackProps extends cdk.StackProps {
@@ -46,6 +48,27 @@ export class SplunkClusterStack extends cdk.Stack {
 
     // Grant read access to the secret
     this.splunkAdminSecret.grantRead(splunkRole);
+
+    // Check for license file and create S3 asset if enabled
+    let licenseAsset: s3_assets.Asset | undefined;
+    let licenseS3Path: string = '';
+    
+    if (LicenseHelper.isLicenseInstallEnabled(config)) {
+      const licenseInfo = LicenseHelper.getLocalLicenseInfo(config);
+      if (licenseInfo) {
+        // Create S3 asset from local license file
+        licenseAsset = new s3_assets.Asset(this, 'LicenseAsset', {
+          path: licenseInfo.path,
+        });
+        licenseS3Path = licenseAsset.s3ObjectUrl;
+        
+        // Grant read access to the license file
+        licenseAsset.grantRead(splunkRole);
+      } else {
+        // Display instructions if license is enabled but file not found
+        LicenseHelper.displayLicenseInstructions(config);
+      }
+    }
 
     // Get latest Amazon Linux 2023 AMI
     const ami = ec2.MachineImage.latestAmazonLinux2023({
@@ -133,6 +156,22 @@ export class SplunkClusterStack extends cdk.Stack {
       'sudo -u splunk /opt/splunk/bin/splunk edit cluster-config -mode manager -replication_factor 3 -search_factor 2 -secret clustersecret -auth admin:$ADMIN_PASSWORD || echo "Failed to configure cluster manager"',
       'sudo -u splunk /opt/splunk/bin/splunk restart'
     );
+
+    // Add license installation commands if enabled
+    if (licenseAsset && licenseS3Path) {
+      this.clusterManager.userData.addCommands(
+        '',
+        '# Download and install license file',
+        'echo "Downloading license file from S3..."',
+        `aws s3 cp ${licenseS3Path} /tmp/splunk.license`,
+        '',
+        ...LicenseHelper.generateInstallScript('/tmp/splunk.license'),
+        ...LicenseHelper.generateLicenseMasterScript(),
+        '',
+        '# Final restart after license installation',
+        'sudo -u splunk /opt/splunk/bin/splunk restart'
+      );
+    }
 
     // Create Launch Template for Indexers with EBS volumes
     const indexerLaunchTemplate = new ec2.LaunchTemplate(this, 'IndexerLaunchTemplate', {
@@ -363,6 +402,11 @@ export class SplunkClusterStack extends cdk.Stack {
       'echo "=== Configuring cold path ==="',
       '/opt/splunk/bin/splunk set datastore-dir coldPath /opt/splunk/cold -auth admin:$ADMIN_PASSWORD || echo "⚠️  Warning: Failed to set cold path"',
       '',
+      '# Configure license peer if license is enabled',
+      ...LicenseHelper.isLicenseInstallEnabled(config) ? 
+        LicenseHelper.generateLicensePeerScript(this.clusterManager.instancePrivateIp) : 
+        [],
+      '',
       '# Final restart to apply all configurations',
       'echo "=== Final Splunk restart ==="',
       '/opt/splunk/bin/splunk restart',
@@ -421,6 +465,33 @@ export class SplunkClusterStack extends cdk.Stack {
       value: `aws ssm start-session --target ${this.clusterManager.instanceId}`,
       description: 'Command to connect to Cluster Manager via Session Manager',
     });
+
+    // License installation status output
+    new cdk.CfnOutput(this, 'LicenseInstallationStatus', {
+      value: config.enableLicenseInstall ? 
+        'License installation ENABLED - Cluster Manager will be configured as License Master' : 
+        'License installation DISABLED - Using 60-day trial license (500MB/day)',
+      description: 'Status of Splunk Enterprise license installation',
+    });
+
+    if (config.enableLicenseInstall) {
+      new cdk.CfnOutput(this, 'LicenseFilePath', {
+        value: config.licensePackageLocalPath || './licenses',
+        description: 'Expected location of license file',
+      });
+
+      new cdk.CfnOutput(this, 'LicenseFileStatus', {
+        value: licenseAsset ? 
+          `✅ License file found and will be installed: ${licenseAsset.s3ObjectKey}` : 
+          '❌ License file NOT FOUND - Please check the licenses directory',
+        description: 'License file detection status',
+      });
+
+      new cdk.CfnOutput(this, 'LicenseCheckCommand', {
+        value: `sudo -u splunk /opt/splunk/bin/splunk list licenses -auth admin:<password>`,
+        description: 'Command to verify installed licenses (run on Cluster Manager)',
+      });
+    }
 
     // Create custom resource to get indexer instance IDs
     const indexerResolver = new IndexerInstanceResolver(this, 'IndexerResolver', {

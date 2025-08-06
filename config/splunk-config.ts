@@ -26,6 +26,10 @@ export interface SplunkConfig {
   esVersion?: string;
   esPackageLocalPath?: string;  // ローカルファイルパス (例: ./packages/splunk-es-8.1.1.tgz)
   
+  // License configuration
+  enableLicenseInstall?: boolean;
+  licensePackageLocalPath?: string;  // ライセンスファイルパス (例: ./licenses/Splunk.License)
+  
   // Storage configuration
   indexerHotVolumeSize: number;  // GB
   indexerColdVolumeSize: number; // GB
@@ -75,6 +79,9 @@ export const defaultConfig: SplunkConfig = {
   splunkVersion: '10.0.0',
   splunkBuildId: 'e8eb0c4654f8',
   enableEnterpriseSecurity: false, // Set to true to deploy ES Search Head
+  
+  // License configuration
+  enableLicenseInstall: false, // Set to true to install license from licenses/
   
   // Storage (minimal for MVP)
   indexerHotVolumeSize: 200,    // 200GB for hot data
