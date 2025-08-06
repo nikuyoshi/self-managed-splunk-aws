@@ -406,5 +406,18 @@ export class SplunkEsStack extends cdk.Stack {
       value: esAsset ? 'ES package will be automatically installed during deployment' : 'ES package not found - manual installation required',
       description: 'Enterprise Security package installation status',
     });
+
+    // License status outputs
+    new cdk.CfnOutput(this, 'EsSearchHeadLicenseStatus', {
+      value: config.enableLicenseInstall ? 
+        '✅ License enabled - ES Search Head configured as license peer to Cluster Manager' : 
+        '⚠️ Using 60-day trial license (500MB/day)',
+      description: 'Splunk Enterprise license status for ES Search Head',
+    });
+
+    new cdk.CfnOutput(this, 'EsSearchHeadLicenseCheckCommand', {
+      value: `sudo -u splunk /opt/splunk/bin/splunk list licenses -auth admin:<password>`,
+      description: 'Command to verify license status on ES Search Head',
+    });
   }
 }

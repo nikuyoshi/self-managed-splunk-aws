@@ -311,5 +311,18 @@ export class SplunkSearchStack extends cdk.Stack {
       value: `Instance Type: ${config.searchHeadInstanceType} | Storage: ${config.searchHeadVolumeSize}GB | Port: 8000`,
       description: 'Search Head configuration summary',
     });
+
+    // License status outputs
+    new cdk.CfnOutput(this, 'SearchHeadLicenseStatus', {
+      value: config.enableLicenseInstall ? 
+        '✅ License enabled - Search Head configured as license peer to Cluster Manager' : 
+        '⚠️ Using 60-day trial license (500MB/day)',
+      description: 'Splunk Enterprise license status for Search Head',
+    });
+
+    new cdk.CfnOutput(this, 'SearchHeadLicenseCheckCommand', {
+      value: `sudo -u splunk /opt/splunk/bin/splunk list licenses -auth admin:<password>`,
+      description: 'Command to verify license status on Search Head',
+    });
   }
 }
