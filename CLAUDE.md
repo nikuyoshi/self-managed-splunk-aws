@@ -244,7 +244,7 @@ self-managed-splunk-aws/
 │   └── self-managed-splunk-aws.ts    # CDKアプリケーションエントリポイント
 ├── lib/
 │   ├── network-stack.ts              # VPC、サブネット、セキュリティグループ
-│   ├── splunk-cluster-stack.ts       # Indexerクラスター、クラスターマスター
+│   ├── splunk-cluster-stack.ts       # Indexerクラスター、Cluster Manager
 │   ├── splunk-search-stack.ts        # 通常Search Head、Elastic IP
 │   ├── splunk-es-stack.ts            # Enterprise Security Search Head
 │   └── splunk-data-ingestion-stack.ts # データ取り込み設定
@@ -290,7 +290,7 @@ const vpc = new ec2.Vpc(this, 'SplunkCloudVpc', {
 const indexerAsg = new autoscaling.AutoScalingGroup(this, 'IndexerASG', {
   vpc,
   instanceType: ec2.InstanceType.of(ec2.InstanceClass.M7I, ec2.InstanceSize.XLARGE),
-  machineImage: ec2.MachineImage.latestAmazonLinux2(),
+  machineImage: ec2.MachineImage.latestAmazonLinux2023(),
   minCapacity: 3,
   maxCapacity: 3,
   desiredCapacity: 3,
@@ -365,7 +365,7 @@ interface SplunkCloudConfig {
   indexerInstanceType: string;
   searchHeadInstanceType: string;
   esSearchHeadInstanceType: string; // ES専用Search Head
-  clusterMasterInstanceType: string;
+  clusterManagerInstanceType: string;
   
   // Splunk設定
   splunkVersion: string;
@@ -466,24 +466,21 @@ npm run typecheck
 - Indexerノードの追加・削除時はクラスターの再バランスが必要
 - ESのデータモデル高速化は大量のストレージを消費するため計画的に実施
 
-### 最近の改善
-- **Search Headのインデクサークラスター認識設定**: Search HeadをCluster Managerに接続し、クラスター管理機能とステータス可視化を有効化
-- **ES Installation改善**: エラーハンドリング強化、Splunk停止/起動による競合回避、リトライロジック追加
-- **Cluster設定の信頼性向上**: Cluster Manager/Indexer設定後の検証ステップ追加、エラー時の継続処理実装
-- **Indexerクラスター参加の信頼性向上**: UserDataスクリプトにCluster Manager待機ロジック（最大5分）と3回リトライメカニズムを実装
-- **Elastic IPアーキテクチャ**: ALBを廃止しElastic IPによる直接アクセスに変更（月額約$40削減）
-- **トラブルシューティング強化**: CloudFormation出力に詳細なトラブルシューティングガイドを追加
-- **Network Load Balancerによるデータ取り込み**: S2S（ポート9997）とHEC（ポート8088）用のNLBを実装し、データ取り込みの高可用性を実現
-- **Search Head分散検索の自動設定**: UserDataスクリプトで全Indexerを自動的に検出・追加する機能を実装（最大10分待機）
-- **セキュリティグループの改善**: レプリケーションポート範囲を9000-9999に拡張し、カスタムポート設定に対応
-- **ES Search Headへの分散検索機能追加**: Enterprise Security用Search Headにも同じ分散検索自動設定機能を実装
-- **分散検索スクリプトのバグ修正**: grep -cコマンドの複数行出力による整数比較エラーを修正（head -1 | tr -d '\n'で処理）
-- **UserDataエラーハンドリングの改善**: set +e/set -eによるエラー制御とコマンド出力による成功判定を実装し、スクリプトの完全実行を保証
-- **HEC設定の強化**: ディレクトリ作成の確実化とCLIコマンドによる追加設定で、HECの確実な有効化を実現
-- **セキュリティグループへのHECポート追加**: ポート8088を明示的に許可し、HECエンドポイントへの接続性を改善
-- **splunkユーザーでの実行**: セキュリティベストプラクティスに従い、Splunkを非rootユーザー（splunk）で実行するよう全スタックを更新
-- **ライセンス自動インストール機能**: licenses/ディレクトリに配置したライセンスファイルを自動的にインストールし、Cluster Managerをライセンスマスターとして設定
-- **init.d方式への統一**: systemd管理からinit.d方式へ変更（-systemd-managed 0）し、UserData実行時の権限エラーを解消、クラスター操作の信頼性を向上
+### 最近の主要な改善点
+
+詳細な変更履歴は[CHANGELOG.md](./CHANGELOG.md)を参照してください。
+
+#### v1.1.0での主な機能追加
+- **柔軟なデプロイメントオプション**: コンテキストパラメータと環境変数による設定のカスタマイズ
+- **対話型デプロイメント**: `npm run deploy:interactive`による設定ウィザード
+- **自動パッケージ検出**: ESパッケージとライセンスファイルの自動検出と適用
+- **NPMスクリプトショートカット**: `deploy:basic`, `deploy:es`, `deploy:production`コマンド追加
+
+#### インフラストラクチャの改善
+- **init.d方式への統一**: systemd管理からの移行による権限エラーの解消
+- **Elastic IPアーキテクチャ**: ALB廃止による月額約$40のコスト削減
+- **Network Load Balancer**: S2S/HEC用のNLB実装による高可用性の実現
+- **splunkユーザー実行**: セキュリティベストプラクティスの適用
 
 ### 検証環境としての利用
 このプロジェクトは検証環境として以下の用途で活用できます：

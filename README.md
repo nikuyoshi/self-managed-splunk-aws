@@ -169,12 +169,43 @@ This deployment supports Splunk Enterprise Security as an optional component:
 - AWS CDK CLI installed (`npm install -g aws-cdk`)
 - Splunk Enterprise license (60-day trial available)
 - For ES deployment: Download ES package from [Splunkbase](https://splunkbase.splunk.com/app/263)
+- (Optional) For interactive deployment: `npm install --save-dev inquirer@^8.0.0`
 
 ### Deployment Instructions
 
-#### Quick Deploy (Recommended)
+#### 🚀 Quick Deploy Options
 
-Use the included deployment script for automated setup:
+**Option 1: Interactive Deployment (Easiest)**
+```bash
+# Install inquirer (first time only)
+npm install --save-dev inquirer@^8.0.0
+
+# Run interactive deployment
+npm run deploy:interactive
+```
+
+**Option 2: Pre-configured Deployments**
+```bash
+# Basic deployment (no ES, no license)
+npm run deploy:basic
+
+# Deploy with ES and license
+npm run deploy:es
+
+# Production-sized deployment
+npm run deploy:production
+```
+
+**Option 3: Custom Deployment with Context Parameters**
+```bash
+# Enable specific features
+npx cdk deploy --all \
+  --context enableES=true \
+  --context enableLicense=true \
+  --context indexerCount=5
+```
+
+**Option 4: Using the deployment script**
 ```bash
 ./deploy.sh
 ```
@@ -255,21 +286,20 @@ This script will:
    # Create packages directory
    mkdir -p packages
    # Download ES from Splunkbase and place in packages/
-   # Example: packages/splunk-es-8.1.1.tgz
+   # Example: packages/splunk-enterprise-security_8.1.1.spl
    ```
    
-   Then deploy:
+   Then deploy using one of these methods:
    ```bash
-   npx cdk deploy --all --context enableES=true
-   # Or with specific profile
-   npx cdk deploy --all --context enableES=true --profile <your-profile-name>
+   # Method 1: NPM script (recommended)
+   npm run deploy:es
    
-   # Or with environment variable
+   # Method 2: Context parameter
+   npx cdk deploy --all --context enableES=true
+   
+   # Method 3: Environment variable
    export ENABLE_ES=true
    npx cdk deploy --all
-   # Or with specific profile
-   export ENABLE_ES=true
-   npx cdk deploy --all --profile <your-profile-name>
    ```
    
    **Option C: Deployment with License**
@@ -280,14 +310,20 @@ This script will:
    mkdir -p licenses
    
    # Place your license file in the directory
-   # Supported formats: .xml, .lic, .License
+   # Supported formats: .lic, .License
    # Example: licenses/Splunk.License
    
-   # Edit config/splunk-config.ts and set:
-   # enableLicenseInstall: true
+   # Deploy using one of these methods:
    
-   # Deploy all stacks
-   npx cdk deploy --all --profile <your-profile-name>
+   # Method 1: Context parameter (no config file changes needed)
+   npx cdk deploy --all --context enableLicense=true
+   
+   # Method 2: NPM script with ES and license
+   npm run deploy:es
+   
+   # Method 3: Environment variable
+   export ENABLE_LICENSE=true
+   npx cdk deploy --all
    ```
 
    **Option D: Deployment with HTTPS for HEC**
@@ -416,9 +452,54 @@ Or use the AWS Console:
    - Each environment needs proper licensing
    - Manual installation ensures compliance
 
+### Deployment Options Configuration
+
+#### Available Context Parameters
+
+You can customize deployment using context parameters with `--context` flag:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `enableES` | boolean | false | Deploy Enterprise Security Search Head |
+| `enableLicense` | boolean | false | Install enterprise license from licenses/ |
+| `indexerCount` | number | 3 | Number of indexers (minimum 3) |
+| `indexerInstanceType` | string | m7i.xlarge | EC2 instance type for indexers |
+| `searchHeadInstanceType` | string | m7i.large | EC2 instance type for search head |
+| `esSearchHeadInstanceType` | string | m7i.2xlarge | EC2 instance type for ES search head |
+| `skipConfirmation` | boolean | false | Skip deployment confirmation prompt |
+
+#### Examples
+
+```bash
+# Custom deployment with 5 indexers
+npx cdk deploy --all \
+  --context indexerCount=5 \
+  --context indexerInstanceType=m7i.2xlarge
+
+# Full production deployment
+npx cdk deploy --all \
+  --context enableES=true \
+  --context enableLicense=true \
+  --context indexerCount=6 \
+  --context indexerInstanceType=m7i.2xlarge \
+  --context searchHeadInstanceType=m7i.xlarge \
+  --context esSearchHeadInstanceType=m7i.4xlarge
+```
+
+#### Environment Variables
+
+You can also use environment variables:
+
+```bash
+export ENABLE_ES=true
+export ENABLE_LICENSE=true
+export INDEXER_COUNT=5
+npx cdk deploy --all
+```
+
 ### Configuration
 
-Edit `config/splunk-config.ts` to customize:
+Edit `config/splunk-config.ts` to customize default values:
 
 **Instance Types (Default: M7i series for 2025)**
 - Indexer: `m7i.xlarge` (4 vCPU, 16 GB RAM)
@@ -530,15 +611,35 @@ aws cloudformation delete-stack --stack-name SelfManagedSplunk-Network --profile
 
 ### Useful Commands
 
+**Build and Test:**
 * `npm run build`   - Compile TypeScript to JavaScript
 * `npm run watch`   - Watch for changes and compile
 * `npm run test`    - Run unit tests
 * `npm run lint`    - Run linter
 * `npm run typecheck` - Run type checking
+
+**Deployment Commands:**
+* `npm run deploy:interactive` - Interactive deployment wizard
+* `npm run deploy:basic` - Basic deployment (no ES, no license)
+* `npm run deploy:es` - Deploy with ES and license
+* `npm run deploy:production` - Production-sized deployment
+
+**CDK Commands:**
 * `npx cdk list`    - List all stacks
 * `npx cdk diff`    - Compare deployed stack with current state
 * `npx cdk synth`   - Synthesize CloudFormation template
 * `./scripts/destroy-all-stacks.sh` - Destroy all stacks in dependency order
+
+### Recent Improvements
+
+- **🚀 Flexible Deployment Options**: New context parameters and environment variables for customizing deployments without config file changes
+- **🎯 Interactive Deployment**: Optional interactive deployment wizard with `npm run deploy:interactive`
+- **📦 Automatic Detection**: ES packages and license files are automatically detected
+- **🔧 ES Installation Fix**: Fixed ES installation script to ensure Splunk is running during app installation
+- **⚡ NPM Scripts**: Added convenient deployment shortcuts (`deploy:basic`, `deploy:es`, `deploy:production`)
+- **📝 License Management**: Improved license installation with automatic detection and Cluster Manager as license master
+- **🔄 Init.d Boot Management**: Switched from systemd to init.d for more reliable boot-start configuration
+- **✅ User Creation Fix**: Fixed admin user creation timing to ensure proper cluster joining
 
 ### Troubleshooting
 
@@ -592,11 +693,59 @@ If instances fail to initialize properly:
    - **Package download failed**: Verify internet connectivity through NAT Gateway
    - **Disk mount failed**: Check EBS volume attachments and device names
    - **Indexer cluster join failed**: Check the troubleshooting guide in CloudFormation outputs or `/docs/indexer-cluster-troubleshooting.md`
+   - **ES installation failed**: The script now ensures Splunk is running before installing ES package
+   - **Admin user creation failed**: Fixed timing issue - user-seed.conf is removed only after verification
 
 4. **Recovery steps:**
    - Terminate the failed instance
    - Let Auto Scaling Group create a replacement (for Indexers)
    - For single instances, update the stack to trigger recreation
+
+#### Enterprise Security Installation Issues
+
+If ES is not installed properly:
+
+1. **Check ES package exists**
+   ```bash
+   ls -la packages/splunk-enterprise-security*.spl
+   ```
+
+2. **Verify deployment was configured for ES**
+   ```bash
+   # Should show enableES=true in CloudFormation parameters
+   aws cloudformation describe-stacks --stack-name SelfManagedSplunk-ES
+   ```
+
+3. **Check installation logs**
+   ```bash
+   # Connect to ES Search Head
+   aws ssm start-session --target <es-instance-id>
+   # Check logs
+   sudo grep "Enterprise Security" /var/log/cloud-init-output.log
+   ```
+
+#### License Installation Issues
+
+If license is not properly configured:
+
+1. **Verify license file exists**
+   ```bash
+   ls -la licenses/*.License
+   ```
+
+2. **Check if license installation was enabled**
+   ```bash
+   # Look for enableLicense context parameter
+   npx cdk context --json | grep enableLicense
+   ```
+
+3. **Verify on Cluster Manager**
+   ```bash
+   # Connect to Cluster Manager
+   aws ssm start-session --target <cm-instance-id>
+   # Check licenses
+   sudo -u splunk /opt/splunk/bin/splunk list licenses -auth admin:<password>
+   ```
 
 ---
 
@@ -760,12 +909,43 @@ graph TB
 - AWS CDK CLIがインストールされていること (`npm install -g aws-cdk`)
 - Splunk Enterpriseライセンス（60日間の試用版が利用可能）
 - ESデプロイの場合：[Splunkbase](https://splunkbase.splunk.com/app/263)からESパッケージをダウンロード
+- （オプション）対話的デプロイの場合：`npm install --save-dev inquirer@^8.0.0`
 
 ### デプロイ手順
 
-#### クイックデプロイ（推奨）
+#### 🚀 クイックデプロイオプション
 
-付属のデプロイスクリプトを使用した自動セットアップ：
+**オプション1: 対話的デプロイ（最も簡単）**
+```bash
+# inquirerのインストール（初回のみ）
+npm install --save-dev inquirer@^8.0.0
+
+# 対話的デプロイの実行
+npm run deploy:interactive
+```
+
+**オプション2: 事前設定済みデプロイ**
+```bash
+# 基本デプロイ（ES・ライセンスなし）
+npm run deploy:basic
+
+# ESとライセンス付きデプロイ
+npm run deploy:es
+
+# 本番サイズのデプロイ
+npm run deploy:production
+```
+
+**オプション3: コンテキストパラメータでカスタムデプロイ**
+```bash
+# 特定機能を有効化
+npx cdk deploy --all \
+  --context enableES=true \
+  --context enableLicense=true \
+  --context indexerCount=5
+```
+
+**オプション4: デプロイスクリプトを使用**
 ```bash
 ./deploy.sh
 ```
@@ -846,21 +1026,20 @@ graph TB
    # packagesディレクトリを作成
    mkdir -p packages
    # SplunkbaseからESをダウンロードしてpackages/に配置
-   # 例: packages/splunk-es-8.1.1.tgz
+   # 例: packages/splunk-enterprise-security_8.1.1.spl
    ```
    
-   その後デプロイ：
+   以下のいずれかの方法でデプロイ：
    ```bash
-   npx cdk deploy --all --context enableES=true
-   # または特定のプロファイルで
-   npx cdk deploy --all --context enableES=true --profile <your-profile-name>
+   # 方法1: NPMスクリプト（推奨）
+   npm run deploy:es
    
-   # または環境変数で
+   # 方法2: コンテキストパラメータ
+   npx cdk deploy --all --context enableES=true
+   
+   # 方法3: 環境変数
    export ENABLE_ES=true
    npx cdk deploy --all
-   # または特定のプロファイルで
-   export ENABLE_ES=true
-   npx cdk deploy --all --profile <your-profile-name>
    ```
    
    **オプションC: ライセンス付きデプロイ**
@@ -871,14 +1050,20 @@ graph TB
    mkdir -p licenses
    
    # ライセンスファイルをディレクトリに配置
-   # サポート形式: .xml, .lic, .License
+   # サポート形式: .lic, .License
    # 例: licenses/Splunk.License
    
-   # config/splunk-config.tsを編集して設定:
-   # enableLicenseInstall: true
+   # 以下のいずれかの方法でデプロイ：
    
-   # 全スタックをデプロイ
-   npx cdk deploy --all --profile <your-profile-name>
+   # 方法1: コンテキストパラメータ（設定ファイル変更不要）
+   npx cdk deploy --all --context enableLicense=true
+   
+   # 方法2: ESとライセンスを含むNPMスクリプト
+   npm run deploy:es
+   
+   # 方法3: 環境変数
+   export ENABLE_LICENSE=true
+   npx cdk deploy --all
    ```
 
 ### デプロイ時間の目安

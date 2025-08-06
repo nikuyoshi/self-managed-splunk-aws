@@ -1,12 +1,20 @@
 #!/bin/bash
 
 # Script to destroy all CDK stacks in reverse dependency order
-# Usage: ./destroy-all-stacks.sh [--profile <aws-profile>]
+# Usage: ./destroy-all-stacks.sh [--profile <aws-profile>] [--yes]
 
 set -e
 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
 # Default values
 PROFILE=""
+AUTO_CONFIRM=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -15,50 +23,114 @@ while [[ $# -gt 0 ]]; do
             PROFILE="--profile $2"
             shift 2
             ;;
+        --yes|-y)
+            AUTO_CONFIRM=true
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: $0 [--profile <aws-profile>] [--yes]"
+            echo "Options:"
+            echo "  --profile <profile>  AWS profile to use"
+            echo "  --yes, -y           Skip confirmation prompt"
+            exit 0
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--profile <aws-profile>]"
+            echo "Usage: $0 [--profile <aws-profile>] [--yes]"
             exit 1
             ;;
     esac
 done
 
-echo "🗑️  Starting stack destruction..."
+echo -e "${BLUE}🗑️  Starting CDK stack destruction...${NC}"
 echo
 
-# Get list of all active stacks from CloudFormation
-echo "📋 Checking for active stacks..."
-ACTIVE_STACKS=$(aws cloudformation list-stacks \
-    --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE \
-    --query 'StackSummaries[?contains(StackName, `SelfManagedSplunk`)].StackName' \
-    --output text $PROFILE)
+# Define CDK stack names (static list from bin/self-managed-splunk-aws.ts)
+# These are the only stacks managed by this repository
+CDK_STACKS=(
+    "SelfManagedSplunk-Network"
+    "SelfManagedSplunk-IndexerCluster"
+    "SelfManagedSplunk-SearchHead"
+    "SelfManagedSplunk-DataIngestion"
+    "SelfManagedSplunk-ES"
+)
+
+# Check which CDK stacks actually exist on AWS
+echo -e "${BLUE}📋 Checking for CDK-managed stacks...${NC}"
+ACTIVE_STACKS=""
+for stack_name in "${CDK_STACKS[@]}"; do
+    STATUS=$(aws cloudformation describe-stacks \
+        --stack-name "$stack_name" $PROFILE \
+        --query 'Stacks[0].StackStatus' \
+        --output text 2>/dev/null)
+    
+    if [ $? -eq 0 ]; then
+        # Stack exists
+        ACTIVE_STACKS="$ACTIVE_STACKS $stack_name"
+    fi
+done
+
+# Trim leading/trailing spaces
+ACTIVE_STACKS=$(echo "$ACTIVE_STACKS" | xargs)
 
 if [ -z "$ACTIVE_STACKS" ]; then
-    echo "✅ No active stacks found to destroy."
+    echo -e "${GREEN}✅ No CDK-managed stacks found to destroy.${NC}"
     exit 0
 fi
 
 # Convert to array
-IFS=$'\t' read -ra STACK_ARRAY <<< "$ACTIVE_STACKS"
+read -ra STACK_ARRAY <<< "$ACTIVE_STACKS"
 
-echo "Found ${#STACK_ARRAY[@]} active stack(s):"
+echo -e "${YELLOW}Found ${#STACK_ARRAY[@]} CDK-managed stack(s):${NC}"
 for stack in "${STACK_ARRAY[@]}"; do
-    echo "  - $stack"
+    # Get stack status and creation time
+    STACK_INFO=$(aws cloudformation describe-stacks \
+        --stack-name "$stack" $PROFILE \
+        --query 'Stacks[0].[StackStatus,CreationTime]' \
+        --output text 2>/dev/null)
+    
+    if [ $? -eq 0 ]; then
+        IFS=$'\t' read -r STATUS CREATED <<< "$STACK_INFO"
+        echo -e "  ${BLUE}•${NC} $stack (Status: $STATUS, Created: $CREATED)"
+    fi
 done
 echo
 
-# Define the correct deletion order (most dependent first)
+# Define static deletion order based on CDK dependencies
 # ES and SearchHead depend on IndexerCluster
-# IndexerCluster imports target groups from DataIngestion
+# IndexerCluster imports from DataIngestion (target groups)
 # DataIngestion depends on Network
 # Therefore: ES -> SearchHead -> IndexerCluster -> DataIngestion -> Network
-DELETION_ORDER=(
-    "SelfManagedSplunk-ES"
-    "SelfManagedSplunk-SearchHead"
-    "SelfManagedSplunk-IndexerCluster"
-    "SelfManagedSplunk-DataIngestion"
-    "SelfManagedSplunk-Network"
-)
+DELETION_ORDER=()
+
+# Build deletion order only for existing stacks
+for stack_name in "SelfManagedSplunk-ES" "SelfManagedSplunk-SearchHead" "SelfManagedSplunk-IndexerCluster" "SelfManagedSplunk-DataIngestion" "SelfManagedSplunk-Network"; do
+    if [[ " $ACTIVE_STACKS " =~ " $stack_name " ]]; then
+        DELETION_ORDER+=("$stack_name")
+    fi
+done
+
+if [ ${#DELETION_ORDER[@]} -gt 0 ]; then
+    echo -e "${GREEN}✅ Deletion order (based on dependencies):${NC}"
+    for i in "${!DELETION_ORDER[@]}"; do
+        echo -e "  ${BLUE}$((i+1)).${NC} ${DELETION_ORDER[$i]}"
+    done
+    echo
+fi
+
+# Confirmation prompt
+if [ "$AUTO_CONFIRM" = false ]; then
+    echo -e "${YELLOW}⚠️  WARNING: This will permanently delete the above stacks and all their resources!${NC}"
+    read -p "Are you sure you want to proceed? (yes/no): " CONFIRM
+    if [[ ! "$CONFIRM" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
+        echo -e "${RED}❌ Deletion cancelled by user${NC}"
+        exit 0
+    fi
+fi
+
+echo
+echo -e "${BLUE}🚀 Starting deletion process...${NC}"
+echo
 
 # Process stacks in order
 for stack_name in "${DELETION_ORDER[@]}"; do
@@ -69,12 +141,12 @@ for stack_name in "${DELETION_ORDER[@]}"; do
         --output text 2>/dev/null)
     
     if [ $? -ne 0 ]; then
-        echo "ℹ️  Stack $stack_name does not exist or already deleted, skipping..."
+        echo -e "${BLUE}ℹ️  Stack $stack_name does not exist or already deleted, skipping...${NC}"
         continue
     fi
     
-    if [[ "$CURRENT_STATUS" == "CREATE_COMPLETE" ]] || [[ "$CURRENT_STATUS" == "UPDATE_COMPLETE" ]]; then
-        echo "🔄 Deleting stack: $stack_name (current status: $CURRENT_STATUS)"
+    if [[ "$CURRENT_STATUS" == "CREATE_COMPLETE" ]] || [[ "$CURRENT_STATUS" == "UPDATE_COMPLETE" ]] || [[ "$CURRENT_STATUS" == "UPDATE_ROLLBACK_COMPLETE" ]]; then
+        echo -e "${YELLOW}🔄 Deleting stack: $stack_name (current status: $CURRENT_STATUS)${NC}"
         
         # Delete the stack
         DELETE_OUTPUT=$(aws cloudformation delete-stack --stack-name "$stack_name" $PROFILE 2>&1)
@@ -98,7 +170,7 @@ for stack_name in "${DELETION_ORDER[@]}"; do
                 
                 if [ $? -ne 0 ]; then
                     # Stack not found = successfully deleted
-                    echo "✅ Successfully deleted: $stack_name"
+                    echo -e "${GREEN}✅ Successfully deleted: $stack_name${NC}"
                     break
                 fi
                 
@@ -171,8 +243,14 @@ for stack_name in "${DELETION_ORDER[@]}"; do
             set -e  # Re-enable exit on error
             echo
         else
-            echo "❌ Failed to delete: $stack_name"
+            echo -e "${RED}❌ Failed to delete: $stack_name${NC}"
             echo "    Error: $DELETE_OUTPUT"
+            
+            # Check if it's a dependency issue
+            if [[ "$DELETE_OUTPUT" == *"Export"* ]] || [[ "$DELETE_OUTPUT" == *"imported"* ]]; then
+                echo -e "    ${YELLOW}💡 Tip: This might be a dependency issue. The script will retry dependent stacks.${NC}"
+            fi
+            
             echo "    Continuing with next stack..."
         fi
         echo
@@ -215,22 +293,37 @@ for stack_name in "${DELETION_ORDER[@]}"; do
     fi
 done
 
-# Final check for remaining stacks
-echo "📋 Final check..."
-REMAINING_STACKS=$(aws cloudformation list-stacks \
-    --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE DELETE_IN_PROGRESS \
-    --query 'StackSummaries[?contains(StackName, `SelfManagedSplunk`)].StackName' \
-    --output text $PROFILE)
+# Final check for remaining CDK stacks
+echo -e "${BLUE}📋 Final verification...${NC}"
+
+# Check only for CDK-managed stacks
+REMAINING_STACKS=""
+for stack_name in "${CDK_STACKS[@]}"; do
+    STATUS=$(aws cloudformation describe-stacks \
+        --stack-name "$stack_name" $PROFILE \
+        --query 'Stacks[0].StackStatus' \
+        --output text 2>/dev/null)
+    
+    if [ $? -eq 0 ] && [[ "$STATUS" != "DELETE_COMPLETE" ]]; then
+        REMAINING_STACKS="$REMAINING_STACKS\n$stack_name ($STATUS)"
+    fi
+done
+
+# Trim leading newline
+REMAINING_STACKS=$(echo -e "$REMAINING_STACKS" | sed '/^$/d')
 
 if [ -z "$REMAINING_STACKS" ]; then
-    echo "🎉 All stacks destroyed successfully!"
+    echo -e "${GREEN}🎉 All CDK-managed stacks destroyed successfully!${NC}"
 else
-    echo "⚠️  Some stacks may still be deleting or require manual intervention:"
-    echo "$REMAINING_STACKS" | tr '\t' '\n' | sed 's/^/    - /'
+    echo -e "${YELLOW}⚠️  Some stacks may still be deleting or require manual intervention:${NC}"
+    echo "$REMAINING_STACKS" | while IFS= read -r line; do
+        [ -n "$line" ] && echo -e "    ${RED}•${NC} $line"
+    done
     echo
-    echo "Recommendations:"
+    echo -e "${BLUE}Recommendations:${NC}"
     echo "  1. Wait a few minutes and run this script again"
     echo "  2. Check AWS Console for any deletion errors"
-    echo "  3. If a stack is stuck in CREATE_COMPLETE, manually run:"
-    echo "     aws cloudformation delete-stack --stack-name <stack-name> $PROFILE"
+    echo "  3. For stacks with DELETE_FAILED status, check CloudFormation events for details"
+    echo "  4. To manually delete a specific stack:"
+    echo -e "     ${YELLOW}aws cloudformation delete-stack --stack-name <stack-name> $PROFILE${NC}"
 fi

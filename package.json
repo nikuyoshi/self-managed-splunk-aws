@@ -8,7 +8,11 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "deploy:interactive": "node scripts/interactive-deploy.js",
+    "deploy:es": "npm run build && cdk deploy --all --context enableES=true --context enableLicense=true",
+    "deploy:basic": "npm run build && cdk deploy --all",
+    "deploy:production": "npm run build && cdk deploy --all --context enableES=true --context enableLicense=true --context indexerCount=6 --context indexerInstanceType=m7i.2xlarge"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
