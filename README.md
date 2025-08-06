@@ -56,14 +56,14 @@ graph TB
     USER -->|HTTP:8000| EIP1
     USER -->|HTTP:8000| EIP2
     
-    FORWARDER -->|S2S:9997<br/>HEC:8088| NLB
+    FORWARDER -->|S2S:9997<br/>HEC:8088/443| NLB
     
     NLB -->|S2S:9997| IDX1
     NLB -->|S2S:9997| IDX2
     NLB -->|S2S:9997| IDX3
-    NLB -->|HEC:8088| IDX1
-    NLB -->|HEC:8088| IDX2
-    NLB -->|HEC:8088| IDX3
+    NLB -->|HEC:8088/443| IDX1
+    NLB -->|HEC:8088/443| IDX2
+    NLB -->|HEC:8088/443| IDX3
     
     EIP1 --> SH
     EIP2 --> ES
@@ -129,7 +129,9 @@ graph TB
 
 #### Data Ingestion:
 - **S2S (Splunk-to-Splunk)**: Port 9997 via NLB for forwarder data
-- **HEC (HTTP Event Collector)**: Port 8088 via NLB for HTTP-based event collection
+- **HEC (HTTP Event Collector)**: 
+  - HTTP: Port 8088 via NLB
+  - HTTPS: Port 443 via NLB with SSL/TLS termination (optional, requires certificate)
 - **Load Distribution**: NLB automatically distributes incoming data across all healthy indexers
 
 The deployment creates:
@@ -286,6 +288,22 @@ This script will:
    
    # Deploy all stacks
    npx cdk deploy --all --profile <your-profile-name>
+   ```
+
+   **Option D: Deployment with HTTPS for HEC**
+   
+   Enable HTTPS/TLS for HTTP Event Collector:
+   ```bash
+   # Method 1: Using existing ACM certificate (recommended)
+   npx cdk deploy --all --context domainName=arn:aws:acm:us-west-2:123456789012:certificate/abc-123-def
+   
+   # Method 2: Create new certificate with DNS validation
+   npx cdk deploy --all --context domainName=hec.example.com --context hostedZoneId=Z1234567890ABC
+   
+   # Method 3: Using environment variables
+   export HEC_DOMAIN_NAME=hec.example.com
+   export HEC_HOSTED_ZONE_ID=Z1234567890ABC
+   npx cdk deploy --all
    ```
 
 ### Deployment Time Estimation
@@ -636,14 +654,14 @@ graph TB
     USER -->|HTTP:8000| EIP1
     USER -->|HTTP:8000| EIP2
     
-    FORWARDER -->|S2S:9997<br/>HEC:8088| NLB
+    FORWARDER -->|S2S:9997<br/>HEC:8088/443| NLB
     
     NLB -->|S2S:9997| IDX1
     NLB -->|S2S:9997| IDX2
     NLB -->|S2S:9997| IDX3
-    NLB -->|HEC:8088| IDX1
-    NLB -->|HEC:8088| IDX2
-    NLB -->|HEC:8088| IDX3
+    NLB -->|HEC:8088/443| IDX1
+    NLB -->|HEC:8088/443| IDX2
+    NLB -->|HEC:8088/443| IDX3
     
     EIP1 --> SH
     EIP2 --> ES

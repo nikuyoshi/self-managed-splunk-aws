@@ -100,6 +100,13 @@ export class NetworkStack extends cdk.Stack {
       'HEC data ingestion'
     );
 
+    // Allow HTTPS HEC traffic (port 443 forwarded to 8088)
+    this.splunkClusterSecurityGroup.addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(443),
+      'HTTPS HEC data ingestion (SSL termination at NLB)'
+    );
+
     // Add S3 Gateway Endpoint (free) to reduce data transfer costs
     // This allows EC2 instances to access S3 without going through the NAT Gateway
     this.vpc.addGatewayEndpoint('S3Endpoint', {

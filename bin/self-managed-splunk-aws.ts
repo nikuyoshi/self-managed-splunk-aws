@@ -57,6 +57,10 @@ const searchHeadStack = new SplunkSearchStack(app, 'SelfManagedSplunk-SearchHead
 searchHeadStack.addDependency(networkStack);
 searchHeadStack.addDependency(indexerClusterStack);
 
+// Get optional domain configuration for HTTPS
+const domainName = app.node.tryGetContext('domainName') || process.env.HEC_DOMAIN_NAME;
+const hostedZoneId = app.node.tryGetContext('hostedZoneId') || process.env.HEC_HOSTED_ZONE_ID;
+
 // Create Data Ingestion Stack (NLB for S2S and HEC)
 const dataIngestionStack = new SplunkDataIngestionStack(app, 'SelfManagedSplunk-DataIngestion', {
   env,
@@ -64,7 +68,9 @@ const dataIngestionStack = new SplunkDataIngestionStack(app, 'SelfManagedSplunk-
   vpc: networkStack.vpc,
   indexerAsg: indexerClusterStack.indexerAsg,
   splunkSecurityGroup: networkStack.splunkClusterSecurityGroup,
-  description: 'Splunk Data Ingestion Infrastructure (NLB for S2S and HEC)',
+  domainName,
+  hostedZoneId,
+  description: 'Splunk Data Ingestion Infrastructure (NLB for S2S and HEC with optional HTTPS)',
 });
 
 // Add dependencies - NetworkStack only to avoid circular dependency
