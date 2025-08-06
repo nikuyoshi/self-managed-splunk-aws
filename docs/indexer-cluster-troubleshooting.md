@@ -46,7 +46,9 @@
 
 3. **Verify Splunk is running**
    ```bash
-   systemctl status splunk
+   # init.d方式でサービス状態を確認
+   /etc/init.d/splunk status
+   # または直接Splunkコマンドで確認
    /opt/splunk/bin/splunk status
    ```
 
@@ -310,7 +312,9 @@ Escalate if you see:
 
 3. **Splunkが実行中か確認**
    ```bash
-   systemctl status splunk
+   # init.d方式でサービス状態を確認
+   /etc/init.d/splunk status
+   # または直接Splunkコマンドで確認
    /opt/splunk/bin/splunk status
    ```
 
