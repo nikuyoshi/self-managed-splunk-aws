@@ -103,7 +103,7 @@ export class SplunkSearchStack extends cdk.Stack {
       'sudo -u splunk bash -c "cat > /opt/splunk/etc/system/local/user-seed.conf << EOF',
       '[user_info]',
       'USERNAME = admin',
-      'PASSWORD = $ADMIN_PASSWORD',
+      'PASSWORD = \'"$ADMIN_PASSWORD"\'',
       'EOF"',
       '',
       '# Start Splunk and accept license as splunk user',
