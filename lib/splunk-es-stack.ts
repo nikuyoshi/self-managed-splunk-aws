@@ -7,6 +7,7 @@ import * as s3_assets from 'aws-cdk-lib/aws-s3-assets';
 import { Construct } from 'constructs';
 import { SplunkConfig, defaultTags } from '../config/splunk-config';
 import { SplunkDownloadHelper } from './utils/splunk-download-helper';
+import { LicenseHelper } from './utils/license-helper';
 import { ESDownloadHelper } from './utils/es-download-helper';
 
 export interface SplunkEsStackProps extends cdk.StackProps {
@@ -287,6 +288,11 @@ export class SplunkEsStack extends cdk.Stack {
       '# Verify distributed search configuration',
       'echo "=== Verifying distributed search configuration ==="',
       'sudo -u splunk /opt/splunk/bin/splunk list search-server -auth admin:$ADMIN_PASSWORD || echo "⚠️  Could not list search servers"',
+      '',
+      '# Configure license peer if license is enabled',
+      ...config.enableLicenseInstall ? 
+        LicenseHelper.generateLicensePeerScript(clusterManagerIp) : 
+        [],
       '',
       '# Restart Splunk to ensure all configurations are loaded',
       'echo "=== Restarting Splunk after distributed search configuration ==="',
