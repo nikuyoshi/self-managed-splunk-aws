@@ -117,9 +117,10 @@ Splunk Validated Architecture (SVA)を参考に、AWS CDKを活用して本番�
   - Network Load Balancer経由でIndexerに分散
   - TLS暗号化対応
 - **HEC (HTTP Event Collector)**: 
-  - ポート: HTTP 8088（Indexer直接）
+  - HTTP: ポート8088（デフォルト）
+  - HTTPS: ポート443（SSL/TLS終端、ACM証明書使用）
   - トークンベース認証
-  - 将来的にHTTPS対応検討
+  - NLBでのSSL終端により本番環境のセキュリティを確保
 - **セキュリティグループ**: 
   - IPアローリストによるアクセス制限
   - 最小権限の原則に基づく設定
