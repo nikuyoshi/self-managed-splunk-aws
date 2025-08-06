@@ -466,6 +466,9 @@ npm run typecheck
 - ESのデータモデル高速化は大量のストレージを消費するため計画的に実施
 
 ### 最近の改善
+- **Search Headのインデクサークラスター認識設定**: Search HeadをCluster Managerに接続し、クラスター管理機能とステータス可視化を有効化
+- **ES Installation改善**: エラーハンドリング強化、Splunk停止/起動による競合回避、リトライロジック追加
+- **Cluster設定の信頼性向上**: Cluster Manager/Indexer設定後の検証ステップ追加、エラー時の継続処理実装
 - **Indexerクラスター参加の信頼性向上**: UserDataスクリプトにCluster Manager待機ロジック（最大5分）と3回リトライメカニズムを実装
 - **Elastic IPアーキテクチャ**: ALBを廃止しElastic IPによる直接アクセスに変更（月額約$40削減）
 - **トラブルシューティング強化**: CloudFormation出力に詳細なトラブルシューティングガイドを追加

@@ -121,8 +121,8 @@ graph TB
   - **Applications**: Direct HTTP event submission via HEC
 - **Cluster Manager**: Manages indexer cluster, handles data distribution policies
 - **Indexers**: Store and index data, distributed across 3 AZs for high availability
-- **Search Head**: User interface for searching data across indexers
-- **ES Search Head**: Dedicated instance for Enterprise Security app (optional)
+- **Search Head**: User interface for searching data across indexers (configured with indexer cluster awareness)
+- **ES Search Head**: Dedicated instance for Enterprise Security app (optional, configured with indexer cluster awareness)
 - **Network Load Balancer**: Handles data ingestion (S2S and HEC) with automatic load distribution
 - **Replication Factor**: 3 (each data block stored on 3 indexers)
 - **Search Factor**: 2 (searchable copies on 2 indexers)
