@@ -53,16 +53,16 @@ export class LicenseHelper {
       : this.DEFAULT_LICENSE_DIR;
     
     console.warn('\n' + '='.repeat(80));
-    console.warn('⚠️  Splunk Enterprise ライセンスファイルが見つかりません');
+    console.warn('⚠️  Splunk Enterprise License File Not Found');
     console.warn('='.repeat(80));
-    console.warn('\n以下の手順でライセンスファイルを配置してください:\n');
-    console.warn('1. Splunkからライセンスファイルを入手');
-    console.warn('2. 以下のディレクトリにライセンスファイルを配置:');
+    console.warn('\nTo add a license file, follow these steps:\n');
+    console.warn('1. Obtain a license file from Splunk');
+    console.warn('2. Place the license file in the following directory:');
     console.warn(`   ${path.resolve(licensesDir)}/`);
-    console.warn('3. サポートされるファイル形式:');
-    console.warn('   - .xml (例: splunk-enterprise.xml)');
-    console.warn('   - .lic (例: splunk-20gb.lic)');
-    console.warn('   - .License (例: Splunk.License)');
+    console.warn('3. Supported file formats:');
+    console.warn('   - .xml (e.g., splunk-enterprise.xml)');
+    console.warn('   - .lic (e.g., splunk-20gb.lic)');
+    console.warn('   - .License (e.g., Splunk.License)');
     console.warn('\n' + '='.repeat(80) + '\n');
   }
 
