@@ -54,13 +54,13 @@ export class ESDownloadHelper {
       : this.DEFAULT_ES_PACKAGE_DIR;
 
     console.warn('\n' + '='.repeat(80));
-    console.warn('⚠️  Splunk Enterprise Security パッケージが見つかりません');
+    console.warn('⚠️  Splunk Enterprise Security Package Not Found');
     console.warn('='.repeat(80));
-    console.warn('\n以下の手順でESパッケージを準備してください：\n');
-    console.warn('1. Splunkbase (https://splunkbase.splunk.com/app/263) からES をダウンロード');
-    console.warn('2. ダウンロードしたファイルを以下のディレクトリに配置:');
+    console.warn('\nTo prepare the ES package, follow these steps:\n');
+    console.warn('1. Download ES from Splunkbase (https://splunkbase.splunk.com/app/263)');
+    console.warn('2. Place the downloaded file in the following directory:');
     console.warn(`   ${path.resolve(packagesDir)}/`);
-    console.warn('3. ファイル名の例: splunk-es-8.1.1.tgz');
+    console.warn('3. Example filename: splunk-es-8.1.1.tgz');
     console.warn('\n' + '='.repeat(80) + '\n');
   }
 
@@ -76,10 +76,10 @@ export class ESDownloadHelper {
     
     if (!packageInfo.exists) {
       this.displayDownloadInstructions(config);
-      throw new Error('Enterprise Securityパッケージが見つかりません。上記の手順に従ってパッケージを配置してください。');
+      throw new Error('Enterprise Security package not found. Please follow the instructions above to add the package.');
     }
 
-    console.log(`✅ ESパッケージが見つかりました: ${packageInfo.filename}`);
+    console.log(`✅ ES package found: ${packageInfo.filename}`);
   }
 
   /**
