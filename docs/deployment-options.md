@@ -78,11 +78,34 @@ npm install --save-dev inquirer@^8.0.0
 npm run deploy:interactive
 ```
 
+#### Interactive Deployment Features
+
+1. **AWS Profile Selection**
+   - Automatically detects available AWS profiles
+   - Option to use environment variables
+   - Profile is passed to CDK with `--profile` option
+
+2. **Auto-approve Option**
+   - Choose whether to auto-approve CloudFormation changes
+   - When enabled, adds `--require-approval never` to CDK command
+   - Useful for CI/CD pipelines or when changes are pre-reviewed
+
+3. **Configuration Steps**
+   - Select AWS profile
+   - Choose whether to deploy Enterprise Security
+   - Choose whether to install license
+   - Select deployment size (Medium/Large)
+   - Select AWS region
+   - Option to auto-approve changes
+   - Review configuration before deployment
+
 The interactive mode will:
-- Auto-detect ES packages and license files
-- Guide you through configuration options
-- Validate your choices
-- Execute the deployment
+- **Select AWS Profile**: Choose from available AWS profiles or use environment variables
+- **Auto-detect**: ES packages and license files
+- **Configure options**: Guide you through all deployment options
+- **Auto-approve**: Option to use `--require-approval never` for unattended deployments
+- **Validate choices**: Ensure configuration is valid
+- **Execute deployment**: Run CDK with selected configuration
 
 ## Available Options
 
