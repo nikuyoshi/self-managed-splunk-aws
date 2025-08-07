@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+### [1.3.1] - 2025-08-07
+
+#### Fixed
+- 🔐 **Password Variable Expansion**: Fixed admin password not being set in user-seed.conf due to incorrect variable expansion syntax (changed `${ADMIN_PASSWORD}` to `$ADMIN_PASSWORD`)
+  - Affected Search Head and ES Search Head UserData scripts
+  - Cluster Manager and Indexer scripts also updated for consistency
+  - Resolves issue where admin user was created without password
+
 ### [1.3.0] - 2025-08-06
 
 #### Fixed
@@ -128,6 +136,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 このプロジェクトは[セマンティックバージョニング](https://semver.org/lang/ja/)に準拠しています。
 
 ### [未リリース]
+
+### [1.3.1] - 2025年8月7日
+
+#### 修正
+- 🔐 **パスワード変数展開**: user-seed.confで管理者パスワードが設定されない問題を修正（変数展開構文を `${ADMIN_PASSWORD}` から `$ADMIN_PASSWORD` に変更）
+  - Search HeadとES Search HeadのUserDataスクリプトが影響
+  - 一貫性のためCluster ManagerとIndexerスクリプトも更新
+  - パスワードなしで管理者ユーザーが作成される問題を解決
 
 ### [1.3.0] - 2025年8月6日
 
