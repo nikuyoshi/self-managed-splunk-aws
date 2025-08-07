@@ -192,17 +192,17 @@ npm run deploy:basic
 # Deploy with ES and license
 npm run deploy:es
 
-# Production-sized deployment
+# Large deployment with ES and license
 npm run deploy:production
 ```
 
 **Option 3: Custom Deployment with Context Parameters**
 ```bash
-# Enable specific features
+# Enable specific features with medium deployment
 npx cdk deploy --all \
+  --context deploymentSize=medium \
   --context enableES=true \
-  --context enableLicense=true \
-  --context indexerCount=5
+  --context enableLicense=true
 ```
 
 **Option 4: Using the deployment script**
@@ -462,28 +462,27 @@ You can customize deployment using context parameters with `--context` flag:
 |-----------|------|---------|-------------|
 | `enableES` | boolean | false | Deploy Enterprise Security Search Head |
 | `enableLicense` | boolean | false | Install enterprise license from licenses/ |
-| `indexerCount` | number | 3 | Number of indexers (minimum 3) |
-| `indexerInstanceType` | string | m7i.xlarge | EC2 instance type for indexers |
-| `searchHeadInstanceType` | string | m7i.large | EC2 instance type for search head |
-| `esSearchHeadInstanceType` | string | m7i.2xlarge | EC2 instance type for ES search head |
+| `deploymentSize` | string | medium | Deployment size: medium, large |
 | `skipConfirmation` | boolean | false | Skip deployment confirmation prompt |
+
+#### Pre-configured Deployment Sizes
+
+| Size | Indexers | RF | SF | Indexer Type | Search Head | ES Search Head | Use Case |
+|------|----------|----|----|--------------|-------------|----------------|----------|
+| **medium** | 3 | 3 | 2 | m7i.xlarge | m7i.large | m7i.2xlarge | Validation/Testing Environment |
+| **large** | 6 | 3 | 2 | m7i.2xlarge | m7i.xlarge | m7i.4xlarge | Production Environment |
 
 #### Examples
 
 ```bash
-# Custom deployment with 5 indexers
-npx cdk deploy --all \
-  --context indexerCount=5 \
-  --context indexerInstanceType=m7i.2xlarge
+# Medium deployment (validation/testing)
+npx cdk deploy --all --context deploymentSize=medium
 
-# Full production deployment
+# Large production deployment with ES and license
 npx cdk deploy --all \
+  --context deploymentSize=large \
   --context enableES=true \
-  --context enableLicense=true \
-  --context indexerCount=6 \
-  --context indexerInstanceType=m7i.2xlarge \
-  --context searchHeadInstanceType=m7i.xlarge \
-  --context esSearchHeadInstanceType=m7i.4xlarge
+  --context enableLicense=true
 ```
 
 #### Environment Variables
@@ -491,9 +490,9 @@ npx cdk deploy --all \
 You can also use environment variables:
 
 ```bash
+export DEPLOYMENT_SIZE=large
 export ENABLE_ES=true
 export ENABLE_LICENSE=true
-export INDEXER_COUNT=5
 npx cdk deploy --all
 ```
 
@@ -622,7 +621,7 @@ aws cloudformation delete-stack --stack-name SelfManagedSplunk-Network --profile
 * `npm run deploy:interactive` - Interactive deployment wizard
 * `npm run deploy:basic` - Basic deployment (no ES, no license)
 * `npm run deploy:es` - Deploy with ES and license
-* `npm run deploy:production` - Production-sized deployment
+* `npm run deploy:production` - Large deployment with ES and license
 
 **CDK Commands:**
 * `npx cdk list`    - List all stacks
@@ -938,11 +937,11 @@ npm run deploy:production
 
 **オプション3: コンテキストパラメータでカスタムデプロイ**
 ```bash
-# 特定機能を有効化
+# 特定機能を有効化（Mediumデプロイ）
 npx cdk deploy --all \
+  --context deploymentSize=medium \
   --context enableES=true \
-  --context enableLicense=true \
-  --context indexerCount=5
+  --context enableLicense=true
 ```
 
 **オプション4: デプロイスクリプトを使用**

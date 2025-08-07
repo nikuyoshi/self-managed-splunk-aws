@@ -1,10 +1,10 @@
 # Self-Managed Splunk on AWS - プロジェクト概要
 
 ## 🎯 プロジェクトの目的
-**本プロジェクトは、本番環境を想定した検証環境（Production-Like Validation Environment）として設計されています。**
+**本プロジェクトは、実環境を想定した検証・評価環境（Validation and Evaluation Environment）として設計されています。**
 
 Splunk Enterpriseのクラスター構成を自分のAWSアカウント上で構築し、以下の用途で活用します：
-- 本番環境と同等の構成でSplunk設定を事前検証
+- 実環境と同等の構成でSplunk設定を事前検証
 - パフォーマンステストとキャパシティプランニング
 - 運用チームのトレーニングとスキル向上
 - Enterprise Securityの実装評価
@@ -12,7 +12,7 @@ Splunk Enterpriseのクラスター構成を自分のAWSアカウント上で構
 
 Splunk Validated Architecture (SVA)を参考に、AWS CDKを活用して本番品質の自動化されたデプロイメントを実現します。
 
-> **⚠️ 注意**: 検証環境として最適化されているため、一部コスト削減設定（単一NAT Gateway等）が含まれています。本番環境への移行時はREADME.mdの「本番環境への移行」セクションを参照してください。
+> **⚠️ 注意**: 検証環境として最適化されているため、一部コスト削減設定（単一NAT Gateway等）が含まれています。商用環境への適用時は要件に応じて設定を調整してください。
 
 ## 参考資料
 - [Splunk Cloud Platform Experience Architecture](https://docs.splunk.com/Documentation/SVA/current/Architectures/SCPExperience)
@@ -120,7 +120,7 @@ Splunk Validated Architecture (SVA)を参考に、AWS CDKを活用して本番�
   - HTTP: ポート8088（デフォルト）
   - HTTPS: ポート443（SSL/TLS終端、ACM証明書使用）
   - トークンベース認証
-  - NLBでのSSL終端により本番環境のセキュリティを確保
+  - NLBでのSSL終端により高度なセキュリティを確保
 - **セキュリティグループ**: 
   - IPアローリストによるアクセス制限
   - 最小権限の原則に基づく設定
@@ -458,7 +458,7 @@ npm run typecheck
 ### 注意事項
 - Splunk Enterpriseのライセンスが必要（60日間の試用版あり）
 - Enterprise Securityは別途ライセンスが必要
-- 本番環境では適切なインスタンスサイズを選択（データ量に応じて調整）
+- 実環境では適切なインスタンスサイズを選択（データ量に応じて調整）
 - ES Search Headは高負荷のため、十分なリソースを確保
 - データ保持ポリシーを事前に決定（ホット/コールド/アーカイブ）
 - ネットワーク帯域幅の要件を考慮（特にレプリケーション）
@@ -482,7 +482,7 @@ npm run typecheck
 - **Network Load Balancer**: S2S/HEC用のNLB実装による高可用性の実現
 - **splunkユーザー実行**: セキュリティベストプラクティスの適用
 
-### 検証環境としての利用
+### 検証環境としての利用シナリオ
 このプロジェクトは検証環境として以下の用途で活用できます：
 - Splunk設定の事前検証とテスト
 - パフォーマンス測定とキャパシティプランニング

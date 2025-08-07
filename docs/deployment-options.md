@@ -28,11 +28,9 @@ npx cdk deploy --all \
   --context enableES=true \
   --context enableLicense=true
 
-# Custom instance configuration
-npx cdk deploy --all \
-  --context indexerCount=5 \
-  --context indexerInstanceType=m7i.2xlarge \
-  --context searchHeadInstanceType=m7i.xlarge
+# Select deployment size
+npx cdk deploy --all --context deploymentSize=medium  # 3 indexers
+npx cdk deploy --all --context deploymentSize=large   # 6 indexers
 
 # Skip confirmation prompt
 npx cdk deploy --all --context skipConfirmation=true
@@ -61,7 +59,7 @@ npm run deploy:basic
 # Deploy with ES and license
 npm run deploy:es
 
-# Production-sized deployment
+# Large scale deployment
 npm run deploy:production
 
 # Interactive deployment (requires inquirer)
@@ -147,27 +145,24 @@ Deployment will fail with clear error messages if validation fails.
 
 ## Examples
 
-### Development Environment
+### Basic Deployment
 ```bash
 npx cdk deploy --all
 ```
 
-### Testing Environment with ES
+### Deployment with Enterprise Security
 ```bash
 npx cdk deploy --all \
   --context enableES=true \
   --context enableLicense=true
 ```
 
-### Production Environment
+### Large Scale Deployment
 ```bash
 npx cdk deploy --all \
   --context enableES=true \
   --context enableLicense=true \
-  --context indexerCount=6 \
-  --context indexerInstanceType=m7i.2xlarge \
-  --context searchHeadInstanceType=m7i.xlarge \
-  --context esSearchHeadInstanceType=m7i.4xlarge \
+  --context deploymentSize=large \
   --context skipConfirmation=true
 ```
 
