@@ -33,7 +33,9 @@ export class SplunkClusterStack extends cdk.Stack {
         secretStringTemplate: JSON.stringify({ username: 'admin' }),
         generateStringKey: 'password',
         passwordLength: 16,
-        excludeCharacters: ' %+~`#$&*()|[]{}:;<>?!\'/@"\\^=',
+        // Exclude characters that could cause issues in shell scripts or Splunk configuration
+        // Added comma (,) to prevent potential issues with CSV parsing or shell variable expansion
+        excludeCharacters: ' %+~`#$&*()|[]{}:;<>?!\'/@"\\^=,',
       },
     });
 
