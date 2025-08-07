@@ -498,6 +498,75 @@ npm run typecheck
 5. AWS Backupとの統合
 6. CloudFormationカスタムリソースの活用
 
+## よくある問題と解決方法
+
+### 管理者パスワードが設定されない問題
+
+#### 症状
+- Splunk Web UIにログインできない
+- `No users exist. Please set up a user.` エラーが表示される
+- UserDataスクリプトで `Admin user creation failed` エラーが発生
+
+#### 原因
+UserDataスクリプト内のヒアドキュメントで変数展開が正しく行われない場合があります。
+特に `${ADMIN_PASSWORD}` 構文を使用した場合、変数が展開されずにそのまま文字列として扱われることがあります。
+
+#### 解決方法
+1. **コード修正**
+   ```typescript
+   // 誤った書き方
+   'PASSWORD = ${ADMIN_PASSWORD}',
+   
+   // 正しい書き方
+   'PASSWORD = $ADMIN_PASSWORD',
+   ```
+
+2. **手動修正（既存インスタンスの場合）**
+   ```bash
+   # インスタンスにSSM Session Managerで接続
+   aws ssm start-session --target <instance-id>
+   
+   # Splunkを停止
+   sudo -u splunk /opt/splunk/bin/splunk stop
+   
+   # 既存のpasswdファイルを削除
+   sudo -u splunk rm -f /opt/splunk/etc/passwd
+   
+   # user-seed.confを作成（実際のパスワードに置き換え）
+   sudo -u splunk tee /opt/splunk/etc/system/local/user-seed.conf << EOF
+   [user_info]
+   USERNAME = admin
+   PASSWORD = <actual-password-from-secrets-manager>
+   EOF
+   
+   # Splunkを起動
+   sudo -u splunk /opt/splunk/bin/splunk start
+   
+   # 確認後、user-seed.confを削除
+   sudo -u splunk rm -f /opt/splunk/etc/system/local/user-seed.conf
+   ```
+
+### デバッグのヒント
+
+1. **UserDataスクリプトの確認**
+   ```bash
+   # UserDataスクリプトの内容を確認
+   cat /var/lib/cloud/instance/user-data.txt
+   
+   # cloud-initログを確認
+   tail -100 /var/log/cloud-init-output.log
+   ```
+
+2. **変数展開のテスト**
+   ```bash
+   # ヒアドキュメント内での変数展開をテスト
+   ADMIN_PASSWORD="test123"
+   cat << EOF
+   PASSWORD = $ADMIN_PASSWORD    # 正しく展開される
+   PASSWORD = ${ADMIN_PASSWORD}  # 環境によっては展開されない場合がある
+   EOF
+   ```
+
 ## Git Commit Rules
 1. **DO NOT add Co-Authored-By lines** - Clean commit messages only
 2. **DO NOT add "🤖 Generated with Claude Code" footer** - Keep commits clean
