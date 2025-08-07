@@ -116,10 +116,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Detailed architecture diagrams
   - Troubleshooting guides
   - Configuration examples
-- 🧪 **Validation Environment**: Production-like testing
+- 🧪 **Validation Environment**: Production-like testing and evaluation
   - Optimized for testing and validation
-  - Easy transition path to production
-  - Configurable instance types and counts
+  - Configurable deployment sizes (Medium/Large) for different scenarios
+  - Easy transition path to production environments
 - 🚀 **Modern Infrastructure**: Latest AWS services
   - Amazon Linux 2023 support
   - GP3 EBS volumes for better performance
@@ -240,10 +240,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 詳細なアーキテクチャ図
   - トラブルシューティングガイド
   - 設定例
-- 🧪 **検証環境**: 本番環境に似たテスト
+- 🧪 **検証環境**: 本番環境に似たテストと評価
   - テストと検証用に最適化
+  - 異なるシナリオ用の設定可能なデプロイメントサイズ（Medium/Large）
   - 本番環境への簡単な移行パス
-  - 設定可能なインスタンスタイプと数
 - 🚀 **モダンインフラストラクチャ**: 最新のAWSサービス
   - Amazon Linux 2023サポート
   - より良いパフォーマンスのためのGP3 EBSボリューム

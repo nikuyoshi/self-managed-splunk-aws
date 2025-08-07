@@ -13,12 +13,40 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SplunkConfig, defaultConfig } from '../../config/splunk-config';
 
+// Splunk recommended configurations based on best practices
+export const SPLUNK_CONFIGURATIONS = {
+  medium: {
+    indexerCount: 3,
+    replicationFactor: 3,
+    searchFactor: 2,
+    indexerInstanceType: 'm7i.xlarge',
+    searchHeadInstanceType: 'm7i.large',
+    esSearchHeadInstanceType: 'm7i.2xlarge',
+    description: 'Medium - 3 indexers cluster configuration'
+  },
+  large: {
+    indexerCount: 6,
+    replicationFactor: 3,
+    searchFactor: 2,
+    indexerInstanceType: 'm7i.2xlarge',
+    searchHeadInstanceType: 'm7i.xlarge',
+    esSearchHeadInstanceType: 'm7i.4xlarge',
+    description: 'Large - 6 indexers cluster configuration'
+  }
+};
+
+export type DeploymentSize = keyof typeof SPLUNK_CONFIGURATIONS;
+
 export interface DeploymentOptions {
   enableEnterpriseSecurity: boolean;
   enableLicenseInstall: boolean;
   esPackagePath?: string;
   licensePath?: string;
+  deploymentSize?: DeploymentSize;
+  // These will be set based on deploymentSize
   indexerCount?: number;
+  replicationFactor?: number;
+  searchFactor?: number;
   indexerInstanceType?: string;
   searchHeadInstanceType?: string;
   esSearchHeadInstanceType?: string;
@@ -42,6 +70,36 @@ export class DeploymentOptionsManager {
    * 4. Default values
    */
   private collectOptions(): DeploymentOptions {
+    // Get deployment size first
+    const deploymentSizeStr = this.getStringOption('deploymentSize', 'DEPLOYMENT_SIZE');
+    let deploymentSize: DeploymentSize | undefined;
+    
+    if (deploymentSizeStr && deploymentSizeStr in SPLUNK_CONFIGURATIONS) {
+      deploymentSize = deploymentSizeStr as DeploymentSize;
+    }
+    
+    // Check if user is trying to use custom indexer count
+    const customIndexerCount = this.getNumberOption('indexerCount', 'INDEXER_COUNT');
+    
+    // If custom indexer count is provided, map to deployment size
+    if (customIndexerCount && !deploymentSize) {
+      if (customIndexerCount <= 4) {
+        deploymentSize = 'medium';
+        console.log(`\n⚠️  Custom indexer count (${customIndexerCount}) mapped to 'medium' deployment (3 indexers)`);
+      } else {
+        deploymentSize = 'large';
+        console.log(`\n⚠️  Custom indexer count (${customIndexerCount}) mapped to 'large' deployment (6 indexers)`);
+      }
+      console.log('ℹ️  Use --context deploymentSize=<size> to explicitly set deployment size\n');
+    }
+    
+    // Default to 'medium' if not specified
+    if (!deploymentSize) {
+      deploymentSize = 'medium';
+    }
+    
+    const selectedConfig = SPLUNK_CONFIGURATIONS[deploymentSize];
+    
     const options: DeploymentOptions = {
       // ES configuration
       enableEnterpriseSecurity: this.getBooleanOption('enableES', 'ENABLE_ES', false),
@@ -49,13 +107,16 @@ export class DeploymentOptionsManager {
       // License configuration
       enableLicenseInstall: this.getBooleanOption('enableLicense', 'ENABLE_LICENSE', false),
       
-      // Instance configuration
-      indexerCount: this.getNumberOption('indexerCount', 'INDEXER_COUNT', defaultConfig.indexerCount),
+      // Deployment size
+      deploymentSize: deploymentSize,
       
-      // Instance types
-      indexerInstanceType: this.getStringOption('indexerInstanceType', 'INDEXER_INSTANCE_TYPE', defaultConfig.indexerInstanceType),
-      searchHeadInstanceType: this.getStringOption('searchHeadInstanceType', 'SEARCH_HEAD_INSTANCE_TYPE', defaultConfig.searchHeadInstanceType),
-      esSearchHeadInstanceType: this.getStringOption('esSearchHeadInstanceType', 'ES_SEARCH_HEAD_INSTANCE_TYPE', defaultConfig.esSearchHeadInstanceType),
+      // Use configuration from selected deployment size (not customizable)
+      indexerCount: selectedConfig.indexerCount,
+      replicationFactor: selectedConfig.replicationFactor,
+      searchFactor: selectedConfig.searchFactor,
+      indexerInstanceType: selectedConfig.indexerInstanceType,
+      searchHeadInstanceType: selectedConfig.searchHeadInstanceType,
+      esSearchHeadInstanceType: selectedConfig.esSearchHeadInstanceType,
       
       // Skip confirmation prompt
       skipConfirmation: this.getBooleanOption('skipConfirmation', 'SKIP_CONFIRMATION', false),
@@ -157,7 +218,13 @@ export class DeploymentOptionsManager {
     console.log('='.repeat(80));
     
     console.log('\n🔧 Core Configuration:');
+    if (this.options.deploymentSize) {
+      const config = SPLUNK_CONFIGURATIONS[this.options.deploymentSize];
+      console.log(`  • Deployment Size: ${this.options.deploymentSize.toUpperCase()} - ${config.description}`);
+    }
     console.log(`  • Indexer Count: ${this.options.indexerCount}`);
+    console.log(`  • Replication Factor: ${this.options.replicationFactor}`);
+    console.log(`  • Search Factor: ${this.options.searchFactor}`);
     console.log(`  • Indexer Instance Type: ${this.options.indexerInstanceType}`);
     console.log(`  • Search Head Instance Type: ${this.options.searchHeadInstanceType}`);
     
@@ -205,10 +272,10 @@ export class DeploymentOptionsManager {
       warnings.push('Deployment will continue with trial license');
     }
 
-    // Check instance counts
-    if (this.options.indexerCount && this.options.indexerCount < 3) {
-      warnings.push(`Indexer count (${this.options.indexerCount}) is less than recommended minimum (3)`);
-    }
+    // Deployment size validation is not needed as configurations are pre-validated
+    
+    // No need to validate replication/search factors as they're now fixed based on deployment size
+    // The configurations are pre-validated based on Splunk best practices
 
     // Display warnings and errors
     if (warnings.length > 0) {
@@ -233,6 +300,8 @@ export class DeploymentOptionsManager {
       enableEnterpriseSecurity: this.options.enableEnterpriseSecurity,
       enableLicenseInstall: this.options.enableLicenseInstall,
       indexerCount: this.options.indexerCount || defaultConfig.indexerCount,
+      replicationFactor: this.options.replicationFactor || defaultConfig.replicationFactor,
+      searchFactor: this.options.searchFactor || defaultConfig.searchFactor,
       indexerInstanceType: this.options.indexerInstanceType || defaultConfig.indexerInstanceType,
       searchHeadInstanceType: this.options.searchHeadInstanceType || defaultConfig.searchHeadInstanceType,
       esSearchHeadInstanceType: this.options.esSearchHeadInstanceType || defaultConfig.esSearchHeadInstanceType,
@@ -263,7 +332,7 @@ export const USAGE_EXAMPLES = `
 Deployment Examples:
 ====================
 
-1. Basic deployment (trial license, no ES):
+1. Basic deployment (medium size, trial license, no ES):
    npx cdk deploy --all
 
 2. Deploy with Enterprise Security:
@@ -275,26 +344,26 @@ Deployment Examples:
 4. Deploy with both ES and license:
    npx cdk deploy --all --context enableES=true --context enableLicense=true
 
-5. Custom instance configuration:
-   npx cdk deploy --all \\
-     --context indexerCount=5 \\
-     --context indexerInstanceType=m7i.2xlarge
+5. Select deployment size:
+   npx cdk deploy --all --context deploymentSize=medium  # 3 indexers
+   npx cdk deploy --all --context deploymentSize=large   # 6 indexers
 
-6. Skip confirmation prompt:
+6. Production deployment (large size with ES and license):
+   npx cdk deploy --all \\
+     --context deploymentSize=large \\
+     --context enableES=true \\
+     --context enableLicense=true
+
+7. Skip confirmation prompt:
    npx cdk deploy --all --context skipConfirmation=true
 
-7. Using environment variables:
+8. Using environment variables:
+   export DEPLOYMENT_SIZE=large
    export ENABLE_ES=true
    export ENABLE_LICENSE=true
-   export INDEXER_COUNT=5
    npx cdk deploy --all
 
-8. Production deployment:
-   npx cdk deploy --all \\
-     --context enableES=true \\
-     --context enableLicense=true \\
-     --context indexerCount=6 \\
-     --context indexerInstanceType=m7i.2xlarge \\
-     --context searchHeadInstanceType=m7i.xlarge \\
-     --context esSearchHeadInstanceType=m7i.4xlarge
+Note: Deployment sizes are pre-configured based on Splunk best practices:
+  - Medium: 3 indexers, RF=3, SF=2
+  - Large: 6 indexers, RF=3, SF=2
 `;
