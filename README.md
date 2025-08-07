@@ -184,6 +184,12 @@ npm install --save-dev inquirer@^8.0.0
 npm run deploy:interactive
 ```
 
+The interactive deployment wizard includes:
+- **AWS Profile Selection**: Choose from available AWS profiles or use environment variables
+- **Auto-approve Option**: Option to use `--require-approval never` for unattended deployments
+- **Automatic Detection**: ES packages and license files are automatically detected
+- **Configuration Review**: Review all settings before deployment
+
 **Option 2: Pre-configured Deployments**
 ```bash
 # Basic deployment (no ES, no license)
@@ -618,7 +624,7 @@ aws cloudformation delete-stack --stack-name SelfManagedSplunk-Network --profile
 * `npm run typecheck` - Run type checking
 
 **Deployment Commands:**
-* `npm run deploy:interactive` - Interactive deployment wizard
+* `npm run deploy:interactive` - Interactive deployment wizard with AWS profile selection
 * `npm run deploy:basic` - Basic deployment (no ES, no license)
 * `npm run deploy:es` - Deploy with ES and license
 * `npm run deploy:production` - Large deployment with ES and license
@@ -922,6 +928,12 @@ npm install --save-dev inquirer@^8.0.0
 # 対話的デプロイの実行
 npm run deploy:interactive
 ```
+
+対話型デプロイウィザードの機能:
+- **AWSプロファイル選択**: 利用可能なAWSプロファイルから選択、または環境変数を使用
+- **自動承認オプション**: 無人デプロイ用の`--require-approval never`オプション
+- **自動検出**: ESパッケージとライセンスファイルを自動検出
+- **設定確認**: デプロイ前にすべての設定を確認
 
 **オプション2: 事前設定済みデプロイ**
 ```bash

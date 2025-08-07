@@ -13,6 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+#### Added
+- 🔑 **AWS Profile Support in Interactive Deployment**: Interactive deployment wizard now includes AWS profile selection
+  - Automatically detects available AWS profiles using `aws configure list-profiles`
+  - Allows selection of specific profile or use of environment variables
+  - Profile is passed to CDK command with `--profile` option
+- ⚡ **Auto-approve Option**: Added option to auto-approve CloudFormation changes
+  - Interactive prompt for `--require-approval never` option
+  - Enables unattended deployments for CI/CD pipelines
+  - Useful when changes have been pre-reviewed
+
+#### Changed
+- 🎯 **Simplified Deployment Configurations**: Replaced flexible indexer count with fixed deployment sizes
+  - Removed customizable indexer count, replication factor, and search factor
+  - Implemented fixed Medium (3 indexers) and Large (6 indexers) configurations
+  - Ensures Splunk best practices with RF=3, SF=2 for both sizes
+  - Prevents invalid configurations and improves user experience
+
 ### [1.3.1] - 2025-08-07
 
 #### Fixed
@@ -136,6 +153,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 このプロジェクトは[セマンティックバージョニング](https://semver.org/lang/ja/)に準拠しています。
 
 ### [未リリース]
+
+#### 追加
+- 🔑 **対話型デプロイでのAWSプロファイルサポート**: 対話型デプロイウィザードにAWSプロファイル選択機能を追加
+  - `aws configure list-profiles`を使用して利用可能なプロファイルを自動検出
+  - 特定のプロファイルまたは環境変数の使用を選択可能
+  - プロファイルは`--profile`オプションでCDKコマンドに渡される
+- ⚡ **自動承認オプション**: CloudFormation変更の自動承認オプションを追加
+  - `--require-approval never`オプションの対話型プロンプト
+  - CI/CDパイプライン用の無人デプロイメントを可能に
+  - 変更が事前レビューされている場合に便利
+
+#### 変更
+- 🎯 **デプロイメント構成の簡素化**: 柔軟なインデクサー数設定を固定デプロイメントサイズに置き換え
+  - カスタマイズ可能なインデクサー数、レプリケーションファクター、サーチファクターを削除
+  - 固定Medium（3インデクサー）およびLarge（6インデクサー）構成を実装
+  - 両サイズでRF=3、SF=2でSplunkベストプラクティスを確保
+  - 無効な構成を防ぎ、ユーザーエクスペリエンスを向上
 
 ### [1.3.1] - 2025年8月7日
 
