@@ -192,7 +192,7 @@ export class SplunkSearchStack extends cdk.Stack {
       'echo "=== Configuring distributed search for all indexers ==="',
       '',
       '# Wait for expected number of indexers to join the cluster',
-      'EXPECTED_INDEXERS=3',
+      `EXPECTED_INDEXERS=${config.indexerCount}`,
       'MAX_WAIT_TIME=600  # 10 minutes',
       'WAIT_INTERVAL=30   # 30 seconds',
       'ELAPSED=0',
@@ -269,6 +269,88 @@ export class SplunkSearchStack extends cdk.Stack {
       'echo "=== Verifying distributed search configuration ==="',
       'sudo -u splunk /opt/splunk/bin/splunk list search-server -auth admin:$ADMIN_PASSWORD || echo "⚠️  Could not list search servers"',
       '',
+      '# === Configure HTTPS for Splunk Web ===',
+      'echo "Configuring HTTPS for Splunk Web..."',
+      '',
+      '# Get public IP and instance metadata',
+      'PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)',
+      'INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)',
+      'REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)',
+      '',
+      // Add HTTPS configuration based on certificate type
+      ...(config.httpsType === 'letsencrypt' && config.letsencryptEmail ? [
+        '# === Configure Let\'s Encrypt Certificate ===',
+        'echo "Setting up Let\'s Encrypt certificate..."',
+        '',
+        '# Install certbot',
+        'dnf install -y python3 python3-pip',
+        'python3 -m pip install certbot',
+        '',
+        '# Create sslip.io domain (using sslip.io to avoid rate limits)',
+        'DOMAIN="${PUBLIC_IP//./-}.sslip.io"',
+        'echo "Domain will be: $DOMAIN"',
+        '',
+        '# Get security group and open port 80 temporarily',
+        'SG_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --region $REGION --query "Reservations[0].Instances[0].SecurityGroups[0].GroupId" --output text)',
+        'aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 80 --cidr 0.0.0.0/0 --region $REGION 2>/dev/null || true',
+        '',
+        '# Get certificate',
+        `LETSENCRYPT_EMAIL="${config.letsencryptEmail}"`,
+        'certbot certonly --standalone \\',
+        '  -d $DOMAIN \\',
+        '  --non-interactive \\',
+        '  --agree-tos \\',
+        '  --email $LETSENCRYPT_EMAIL \\',
+        '  --preferred-challenges http',
+        '',
+        '# Close port 80',
+        'aws ec2 revoke-security-group-ingress --group-id $SG_ID --protocol tcp --port 80 --cidr 0.0.0.0/0 --region $REGION 2>/dev/null || true',
+        '',
+        '# Fix permissions for Let\'s Encrypt private key',
+        'chmod 644 /etc/letsencrypt/archive/$DOMAIN/privkey*.pem',
+        '',
+        '# Setup certificate for Splunk',
+        'mkdir -p /opt/splunk/etc/auth/letsencrypt',
+        'ln -sf /etc/letsencrypt/live/$DOMAIN/privkey.pem /opt/splunk/etc/auth/letsencrypt/privkey.pem',
+        'ln -sf /etc/letsencrypt/live/$DOMAIN/fullchain.pem /opt/splunk/etc/auth/letsencrypt/fullchain.pem',
+        'chown -R splunk:splunk /opt/splunk/etc/auth/letsencrypt',
+        '',
+        '# Configure web.conf',
+        'sudo -u splunk tee /opt/splunk/etc/system/local/web.conf << EOF',
+        '[settings]',
+        'enableSplunkWebSSL = true',
+        'httpport = 8443',
+        'privKeyPath = /opt/splunk/etc/auth/letsencrypt/privkey.pem',
+        'serverCert = /opt/splunk/etc/auth/letsencrypt/fullchain.pem',
+        'EOF',
+        '',
+        '# Setup auto-renewal',
+        'echo "0 0,12 * * * root certbot renew --quiet --post-hook \\"/opt/splunk/bin/splunk restart splunkd\\"" > /etc/cron.d/certbot-splunk',
+        '',
+        'echo "Let\'s Encrypt certificate configured for $DOMAIN"',
+      ] : [
+        '# === Configure Self-Signed Certificate ===',
+        'echo "Setting up self-signed certificate..."',
+        '',
+        '# Create directory for certificates',
+        'sudo -u splunk mkdir -p /opt/splunk/etc/auth/mycerts',
+        '',
+        '# Generate self-signed certificate',
+        'sudo -u splunk openssl req -x509 -nodes -days 365 -newkey rsa:2048 \\',
+        '  -keyout /opt/splunk/etc/auth/mycerts/server.key \\',
+        '  -out /opt/splunk/etc/auth/mycerts/server.pem \\',
+        '  -subj "/C=US/ST=CA/L=SF/O=Test/CN=$PUBLIC_IP"',
+        '',
+        '# Configure web.conf for HTTPS',
+        'sudo -u splunk tee /opt/splunk/etc/system/local/web.conf << EOF',
+        '[settings]',
+        'enableSplunkWebSSL = true',
+        'httpport = 8443',
+        'privKeyPath = /opt/splunk/etc/auth/mycerts/server.key',
+        'serverCert = /opt/splunk/etc/auth/mycerts/server.pem',
+        'EOF',
+      ]),
+      '',
       '# Final restart to ensure all configurations are loaded',
       'echo "=== Final Splunk restart ==="',
       'sudo -u splunk /opt/splunk/bin/splunk restart',
@@ -294,10 +376,10 @@ export class SplunkSearchStack extends cdk.Stack {
     // Store Elastic IP
     this.elasticIp = eip.attrPublicIp;
 
-    // Allow inbound traffic on port 8000 from anywhere (restrict in production)
+    // Allow inbound traffic on port 8443 (HTTPS) from anywhere (restrict in production)
     this.searchHead.connections.allowFromAnyIpv4(
-      ec2.Port.tcp(8000),
-      'Allow Splunk Web UI access'
+      ec2.Port.tcp(8443),
+      'Allow Splunk Web UI HTTPS access'
     );
 
     // Apply tags to all resources in this stack
@@ -321,8 +403,12 @@ export class SplunkSearchStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'SplunkWebUrl', {
-      value: `http://${this.elasticIp}:8000`,
-      description: 'Splunk Web UI URL (username: admin, password: check Secrets Manager)',
+      value: config.httpsType === 'letsencrypt' 
+        ? `https://${this.elasticIp.replace(/\./g, '-')}.sslip.io:8443`
+        : `https://${this.elasticIp}:8443`,
+      description: config.httpsType === 'letsencrypt'
+        ? `Splunk Web UI URL (HTTPS with Let's Encrypt - no browser warning - username: admin, password: check Secrets Manager)`
+        : 'Splunk Web UI URL (HTTPS with self-signed cert - browser warning expected - username: admin, password: check Secrets Manager)',
     });
 
     new cdk.CfnOutput(this, 'SearchHeadElasticIP', {

@@ -244,7 +244,7 @@ export class SplunkEsStack extends cdk.Stack {
       'set +e',
       '',
       '# Wait for expected number of indexers to join the cluster',
-      'EXPECTED_INDEXERS=3',
+      `EXPECTED_INDEXERS=${config.indexerCount}`,
       'MAX_WAIT_TIME=600  # 10 minutes',
       'WAIT_INTERVAL=30   # 30 seconds',
       'ELAPSED=0',
@@ -435,6 +435,92 @@ export class SplunkEsStack extends cdk.Stack {
       'echo "Deployment logs: /var/log/cloud-init-output.log" | sudo tee -a $SUMMARY_FILE',
       'echo "Summary file: $SUMMARY_FILE" | sudo tee -a $SUMMARY_FILE',
       '',
+      '# === Configure HTTPS for Splunk Web ===',
+      'echo "Configuring HTTPS for ES Search Head Web UI..."',
+      '',
+      '# Get public IP and instance metadata',
+      'PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)',
+      'INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)',
+      'REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)',
+      '',
+      // Add HTTPS configuration based on certificate type
+      ...(config.httpsType === 'letsencrypt' && config.letsencryptEmail ? [
+        '# === Configure Let\'s Encrypt Certificate ===',
+        'echo "Setting up Let\'s Encrypt certificate for ES Search Head..."',
+        '',
+        '# Install certbot',
+        'dnf install -y python3 python3-pip',
+        'python3 -m pip install certbot',
+        '',
+        '# Create sslip.io domain (using sslip.io to avoid rate limits)',
+        'DOMAIN="${PUBLIC_IP//./-}.sslip.io"',
+        'echo "Domain will be: $DOMAIN"',
+        '',
+        '# Get security group and open port 80 temporarily',
+        'SG_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --region $REGION --query "Reservations[0].Instances[0].SecurityGroups[0].GroupId" --output text)',
+        'aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 80 --cidr 0.0.0.0/0 --region $REGION 2>/dev/null || true',
+        '',
+        '# Get certificate',
+        `LETSENCRYPT_EMAIL="${config.letsencryptEmail}"`,
+        'certbot certonly --standalone \\',
+        '  -d $DOMAIN \\',
+        '  --non-interactive \\',
+        '  --agree-tos \\',
+        '  --email $LETSENCRYPT_EMAIL \\',
+        '  --preferred-challenges http',
+        '',
+        '# Close port 80',
+        'aws ec2 revoke-security-group-ingress --group-id $SG_ID --protocol tcp --port 80 --cidr 0.0.0.0/0 --region $REGION 2>/dev/null || true',
+        '',
+        '# Fix permissions for Let\'s Encrypt private key',
+        'chmod 644 /etc/letsencrypt/archive/$DOMAIN/privkey*.pem',
+        '',
+        '# Setup certificate for Splunk',
+        'mkdir -p /opt/splunk/etc/auth/letsencrypt',
+        'ln -sf /etc/letsencrypt/live/$DOMAIN/privkey.pem /opt/splunk/etc/auth/letsencrypt/privkey.pem',
+        'ln -sf /etc/letsencrypt/live/$DOMAIN/fullchain.pem /opt/splunk/etc/auth/letsencrypt/fullchain.pem',
+        'chown -R splunk:splunk /opt/splunk/etc/auth/letsencrypt',
+        '',
+        '# Configure web.conf',
+        'sudo -u splunk tee /opt/splunk/etc/system/local/web.conf << EOF',
+        '[settings]',
+        'enableSplunkWebSSL = true',
+        'httpport = 8443',
+        'privKeyPath = /opt/splunk/etc/auth/letsencrypt/privkey.pem',
+        'serverCert = /opt/splunk/etc/auth/letsencrypt/fullchain.pem',
+        'EOF',
+        '',
+        '# Setup auto-renewal',
+        'echo "0 0,12 * * * root certbot renew --quiet --post-hook \\"/opt/splunk/bin/splunk restart splunkd\\"" > /etc/cron.d/certbot-splunk',
+        '',
+        'echo "Let\'s Encrypt certificate configured for ES Search Head: $DOMAIN"',
+      ] : [
+        '# === Configure Self-Signed Certificate ===',
+        'echo "Setting up self-signed certificate for ES Search Head..."',
+        '',
+        '# Create directory for certificates',
+        'sudo -u splunk mkdir -p /opt/splunk/etc/auth/mycerts',
+        '',
+        '# Generate self-signed certificate',
+        'sudo -u splunk openssl req -x509 -nodes -days 365 -newkey rsa:2048 \\',
+        '  -keyout /opt/splunk/etc/auth/mycerts/server.key \\',
+        '  -out /opt/splunk/etc/auth/mycerts/server.pem \\',
+        '  -subj "/C=US/ST=CA/L=SF/O=Test/CN=$PUBLIC_IP"',
+        '',
+        '# Configure web.conf for HTTPS',
+        'sudo -u splunk tee /opt/splunk/etc/system/local/web.conf << EOF',
+        '[settings]',
+        'enableSplunkWebSSL = true',
+        'httpport = 8443',
+        'privKeyPath = /opt/splunk/etc/auth/mycerts/server.key',
+        'serverCert = /opt/splunk/etc/auth/mycerts/server.pem',
+        'EOF',
+      ]),
+      '',
+      '# Final restart to apply HTTPS configuration',
+      'echo "=== Final Splunk restart for HTTPS ==="',
+      'sudo -u splunk /opt/splunk/bin/splunk restart',
+      '',
       'echo "ES Search Head setup complete."'
     );
 
@@ -456,10 +542,10 @@ export class SplunkEsStack extends cdk.Stack {
     // Store Elastic IP
     this.elasticIp = eip.attrPublicIp;
 
-    // Allow inbound traffic on port 8000 from anywhere (restrict in production)
+    // Allow inbound traffic on port 8443 (HTTPS) from anywhere (restrict in production)
     this.esSearchHead.connections.allowFromAnyIpv4(
-      ec2.Port.tcp(8000),
-      'Allow Splunk Web UI access'
+      ec2.Port.tcp(8443),
+      'Allow Splunk Web UI HTTPS access'
     );
 
     // Apply tags to all resources in this stack
@@ -482,8 +568,12 @@ export class SplunkEsStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'EsWebUrl', {
-      value: `http://${this.elasticIp}:8000`,
-      description: 'ES Search Head Web UI URL',
+      value: config.httpsType === 'letsencrypt' 
+        ? `https://${this.elasticIp.replace(/\./g, '-')}.sslip.io:8443`
+        : `https://${this.elasticIp}:8443`,
+      description: config.httpsType === 'letsencrypt'
+        ? `ES Search Head Web UI URL (HTTPS with Let's Encrypt - no browser warning)`
+        : 'ES Search Head Web UI URL (HTTPS with self-signed cert - browser warning expected)',
     });
 
     new cdk.CfnOutput(this, 'EsSearchHeadElasticIP', {

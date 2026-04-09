@@ -45,6 +45,11 @@ export interface SplunkConfig {
   allowedIpRanges?: string[];
   enableEncryption: boolean;
   
+  // HTTPS/SSL configuration
+  enableHttps?: boolean;
+  httpsType?: 'self-signed' | 'letsencrypt';
+  letsencryptEmail?: string;  // Required for Let's Encrypt
+  
   // Tags
   environment: string;
   project: string;
@@ -96,6 +101,10 @@ export const defaultConfig: SplunkConfig = {
   
   // Security
   enableEncryption: true,
+  
+  // HTTPS/SSL configuration
+  enableHttps: true,
+  httpsType: 'self-signed', // default to self-signed, can be overridden with 'letsencrypt'
   
   // Tags
   environment: 'development',

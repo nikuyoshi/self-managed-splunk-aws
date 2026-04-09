@@ -30,3 +30,6 @@ cdk.context.json
 
 # Test files that may contain sensitive data
 search-head-quick-test.txt
+
+.DS_Store
+*/.DS_Store

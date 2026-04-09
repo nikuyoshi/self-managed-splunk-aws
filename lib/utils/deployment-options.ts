@@ -51,6 +51,9 @@ export interface DeploymentOptions {
   searchHeadInstanceType?: string;
   esSearchHeadInstanceType?: string;
   skipConfirmation?: boolean;
+  // HTTPS configuration
+  httpsType?: 'self-signed' | 'letsencrypt';
+  letsencryptEmail?: string;
 }
 
 export class DeploymentOptionsManager {
@@ -117,6 +120,10 @@ export class DeploymentOptionsManager {
       indexerInstanceType: selectedConfig.indexerInstanceType,
       searchHeadInstanceType: selectedConfig.searchHeadInstanceType,
       esSearchHeadInstanceType: selectedConfig.esSearchHeadInstanceType,
+      
+      // HTTPS configuration
+      httpsType: this.getStringOption('httpsType', 'HTTPS_TYPE', 'self-signed') as 'self-signed' | 'letsencrypt' | undefined,
+      letsencryptEmail: this.getStringOption('letsencryptEmail', 'LETSENCRYPT_EMAIL'),
       
       // Skip confirmation prompt
       skipConfirmation: this.getBooleanOption('skipConfirmation', 'SKIP_CONFIRMATION', false),
@@ -248,6 +255,16 @@ export class DeploymentOptionsManager {
       }
     }
     
+    console.log('\n🔒 HTTPS Configuration:');
+    console.log(`  • Certificate Type: ${this.options.httpsType === 'letsencrypt' ? "Let's Encrypt (No browser warning)" : 'Self-signed (Browser warning)'}`);
+    if (this.options.httpsType === 'letsencrypt') {
+      if (this.options.letsencryptEmail) {
+        console.log(`    └─ Email: ${this.options.letsencryptEmail}`);
+      } else {
+        console.log(`    └─ ⚠️  Email required for Let's Encrypt`);
+      }
+    }
+    
     console.log('\n' + '='.repeat(80));
   }
 
@@ -270,6 +287,13 @@ export class DeploymentOptionsManager {
     if (this.options.enableLicenseInstall && !this.options.licensePath) {
       warnings.push('License installation is enabled but no license file found in licenses/');
       warnings.push('Deployment will continue with trial license');
+    }
+    
+    // Check Let's Encrypt email
+    if (this.options.httpsType === 'letsencrypt' && !this.options.letsencryptEmail) {
+      errors.push("Let's Encrypt certificate type selected but no email address provided");
+      errors.push("Please provide email with --context letsencryptEmail=your-email@example.com");
+      isValid = false;
     }
 
     // Deployment size validation is not needed as configurations are pre-validated
@@ -307,6 +331,8 @@ export class DeploymentOptionsManager {
       esSearchHeadInstanceType: this.options.esSearchHeadInstanceType || defaultConfig.esSearchHeadInstanceType,
       esPackageLocalPath: this.options.esPackagePath,
       licensePackageLocalPath: this.options.licensePath,
+      httpsType: this.options.httpsType || 'self-signed',
+      letsencryptEmail: this.options.letsencryptEmail,
     };
   }
 
@@ -363,7 +389,19 @@ Deployment Examples:
    export ENABLE_LICENSE=true
    npx cdk deploy --all
 
+9. Deploy with Let's Encrypt certificate (no browser warnings):
+   npx cdk deploy --all \\
+     --context httpsType=letsencrypt \\
+     --context letsencryptEmail=your-email@example.com
+
+10. Interactive deployment with prompts (recommended for first-time users):
+    npm run deploy:interactive
+
 Note: Deployment sizes are pre-configured based on Splunk best practices:
   - Medium: 3 indexers, RF=3, SF=2
   - Large: 6 indexers, RF=3, SF=2
+
+HTTPS Options:
+  - self-signed: Quick setup, browser will show warning (default)
+  - letsencrypt: No browser warning, requires valid email address
 `;

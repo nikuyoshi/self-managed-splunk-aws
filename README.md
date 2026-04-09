@@ -115,6 +115,8 @@ graph TB
 
 #### Component Details:
 - **Users/Administrators**: Access Splunk Web UI through Elastic IPs for search and administration
+  - **HTTPS Access**: Port 8443 with Let's Encrypt SSL/TLS certificates (no browser warning)
+  - **sslip.io Domain**: Automatic DNS resolution without a custom domain
 - **Universal/Heavy Forwarders**: Send log data to Splunk cluster via NLB
   - **Universal Forwarders**: Lightweight agents for log collection
   - **Heavy Forwarders**: Can parse and route data before forwarding
@@ -188,6 +190,8 @@ The interactive deployment wizard includes:
 - **AWS Profile Selection**: Choose from available AWS profiles or use environment variables
 - **Auto-approve Option**: Option to use `--require-approval never` for unattended deployments
 - **Automatic Detection**: ES packages and license files are automatically detected
+- **HTTPS Certificate Type**: Let's Encrypt certificate (no browser warning) via sslip.io
+- **Email Validation**: Automatic email validation for Let's Encrypt registration
 - **Configuration Review**: Review all settings before deployment
 
 **Option 2: Pre-configured Deployments**
@@ -469,6 +473,8 @@ You can customize deployment using context parameters with `--context` flag:
 | `enableES` | boolean | false | Deploy Enterprise Security Search Head |
 | `enableLicense` | boolean | false | Install enterprise license from licenses/ |
 | `deploymentSize` | string | medium | Deployment size: medium, large |
+| `httpsType` | string | letsencrypt | HTTPS certificate type: letsencrypt, self-signed |
+| `letsencryptEmail` | string | - | Email for Let's Encrypt certificate (required if httpsType=letsencrypt) |
 | `skipConfirmation` | boolean | false | Skip deployment confirmation prompt |
 
 #### Pre-configured Deployment Sizes
@@ -489,6 +495,14 @@ npx cdk deploy --all \
   --context deploymentSize=large \
   --context enableES=true \
   --context enableLicense=true
+
+# Deploy with Let's Encrypt certificates (no browser warnings)
+npx cdk deploy --all \
+  --context httpsType=letsencrypt \
+  --context letsencryptEmail=your-email@example.com
+
+# Interactive deployment with prompts (recommended)
+npm run deploy:interactive
 ```
 
 #### Environment Variables
@@ -866,17 +880,26 @@ graph TB
 ```
 
 #### コンポーネント詳細:
+- **ユーザー/管理者**: Elastic IP経由でSplunk Web UIにアクセスし、検索・管理を実施
+  - **HTTPSアクセス**: Let's Encrypt SSL/TLS証明書によるポート8443（ブラウザ警告なし）
+  - **sslip.ioドメイン**: カスタムドメインなしで自動DNS解決
+- **Universal/Heavy Forwarders**: NLB経由でSplunkクラスターにログデータを送信
+  - **Universal Forwarders**: ログ収集用の軽量エージェント
+  - **Heavy Forwarders**: 転送前にデータのパースとルーティングが可能
+  - **アプリケーション**: HEC経由での直接HTTPイベント送信
 - **クラスターマネージャー**: インデクサークラスターを管理、データ分散ポリシーを制御
 - **インデクサー**: データの保存とインデックス作成、3つのAZに分散配置で高可用性を実現
-- **サーチヘッド**: インデクサー全体のデータを検索するユーザーインターフェース
-- **ESサーチヘッド**: Enterprise Securityアプリ専用インスタンス（オプション）
+- **サーチヘッド**: インデクサー全体のデータを検索するユーザーインターフェース（インデクサークラスター認識で設定済み）
+- **ESサーチヘッド**: Enterprise Securityアプリ専用インスタンス（オプション、インデクサークラスター認識で設定済み）
 - **Network Load Balancer**: データ取り込み（S2SとHEC）を処理し、自動的に負荷分散
 - **レプリケーションファクター**: 3（各データブロックを3つのインデクサーに保存）
 - **サーチファクター**: 2（2つのインデクサーで検索可能なコピーを保持）
 
 #### データ取り込み:
 - **S2S (Splunk-to-Splunk)**: NLB経由のポート9997でForwarderデータを受信
-- **HEC (HTTP Event Collector)**: NLB経由のポート8088でHTTPベースのイベント収集
+- **HEC (HTTP Event Collector)**:
+  - HTTP: NLB経由のポート8088
+  - HTTPS: NLB経由のポート443（SSL/TLS終端、オプション、証明書が必要）
 - **負荷分散**: NLBが正常なインデクサーに自動的にデータを分散
 
 デプロイされるコンポーネント:
@@ -933,6 +956,8 @@ npm run deploy:interactive
 - **AWSプロファイル選択**: 利用可能なAWSプロファイルから選択、または環境変数を使用
 - **自動承認オプション**: 無人デプロイ用の`--require-approval never`オプション
 - **自動検出**: ESパッケージとライセンスファイルを自動検出
+- **HTTPS証明書タイプ**: Let's Encrypt証明書（ブラウザ警告なし）sslip.io経由
+- **メールアドレス検証**: Let's Encrypt登録用の自動メールアドレス検証
 - **設定確認**: デプロイ前にすべての設定を確認
 
 **オプション2: 事前設定済みデプロイ**
@@ -1077,6 +1102,22 @@ npx cdk deploy --all \
    npx cdk deploy --all
    ```
 
+   **オプションD: HEC向けHTTPSデプロイ**
+
+   HTTP Event Collector向けにHTTPS/TLSを有効化：
+   ```bash
+   # 方法1: 既存のACM証明書を使用（推奨）
+   npx cdk deploy --all --context domainName=arn:aws:acm:us-west-2:123456789012:certificate/abc-123-def
+
+   # 方法2: DNS検証で新しい証明書を作成
+   npx cdk deploy --all --context domainName=hec.example.com --context hostedZoneId=Z1234567890ABC
+
+   # 方法3: 環境変数を使用
+   export HEC_DOMAIN_NAME=hec.example.com
+   export HEC_HOSTED_ZONE_ID=Z1234567890ABC
+   npx cdk deploy --all
+   ```
+
 ### デプロイ時間の目安
 
 **全体のデプロイ時間: 約20-30分**
@@ -1187,6 +1228,60 @@ aws ssm start-session --target i-0123456789abcdef
    - 各環境で適切なライセンスが必要
    - 手動インストールによりコンプライアンスを確保
 
+### デプロイメントオプションの設定
+
+#### 利用可能なコンテキストパラメータ
+
+`--context`フラグでコンテキストパラメータを使用してデプロイをカスタマイズできます：
+
+| パラメータ | 型 | デフォルト | 説明 |
+|-----------|------|---------|-------------|
+| `enableES` | boolean | false | Enterprise Security サーチヘッドをデプロイ |
+| `enableLicense` | boolean | false | licenses/からエンタープライズライセンスをインストール |
+| `deploymentSize` | string | medium | デプロイサイズ: medium、large |
+| `httpsType` | string | letsencrypt | HTTPS証明書タイプ: letsencrypt、self-signed |
+| `letsencryptEmail` | string | - | Let's Encrypt証明書用メールアドレス（httpsType=letsencryptの場合は必須） |
+| `skipConfirmation` | boolean | false | デプロイ確認プロンプトをスキップ |
+
+#### 事前設定済みデプロイサイズ
+
+| サイズ | インデクサー数 | RF | SF | インデクサータイプ | サーチヘッド | ESサーチヘッド | ユースケース |
+|------|----------|----|----|--------------|-------------|----------------|----------|
+| **medium** | 3 | 3 | 2 | m7i.xlarge | m7i.large | m7i.2xlarge | 検証/テスト環境 |
+| **large** | 6 | 3 | 2 | m7i.2xlarge | m7i.xlarge | m7i.4xlarge | 本番環境 |
+
+#### 使用例
+
+```bash
+# Mediumデプロイ（検証/テスト）
+npx cdk deploy --all --context deploymentSize=medium
+
+# ESとライセンスを含むLargeデプロイ
+npx cdk deploy --all \
+  --context deploymentSize=large \
+  --context enableES=true \
+  --context enableLicense=true
+
+# Let's Encrypt証明書でデプロイ（ブラウザ警告なし）
+npx cdk deploy --all \
+  --context httpsType=letsencrypt \
+  --context letsencryptEmail=your-email@example.com
+
+# 対話型デプロイ（推奨）
+npm run deploy:interactive
+```
+
+#### 環境変数
+
+環境変数でも設定可能：
+
+```bash
+export DEPLOYMENT_SIZE=large
+export ENABLE_ES=true
+export ENABLE_LICENSE=true
+npx cdk deploy --all
+```
+
 ### 設定のカスタマイズ
 
 `config/splunk-config.ts`を編集してカスタマイズ可能：
@@ -1283,15 +1378,35 @@ aws cloudformation delete-stack --stack-name SelfManagedSplunk-Network --profile
 
 ### 便利なコマンド
 
+**ビルドとテスト:**
 * `npm run build`   - TypeScriptをJavaScriptにコンパイル
 * `npm run watch`   - 変更を監視してコンパイル
 * `npm run test`    - ユニットテストを実行
 * `npm run lint`    - リンターを実行
 * `npm run typecheck` - 型チェックを実行
+
+**デプロイコマンド:**
+* `npm run deploy:interactive` - AWSプロファイル選択付き対話型デプロイウィザード
+* `npm run deploy:basic` - 基本デプロイ（ES・ライセンスなし）
+* `npm run deploy:es` - ESとライセンス付きデプロイ
+* `npm run deploy:production` - ESとライセンス付きLargeデプロイ
+
+**CDKコマンド:**
 * `npx cdk list`    - すべてのスタックをリスト
 * `npx cdk diff`    - デプロイ済みスタックと現在の状態を比較
 * `npx cdk synth`   - CloudFormationテンプレートを合成
 * `./scripts/destroy-all-stacks.sh` - 依存関係順ですべてのスタックを削除
+
+### 最近の改善点
+
+- **🚀 柔軟なデプロイメントオプション**: 設定ファイル変更なしでデプロイをカスタマイズできる新しいコンテキストパラメータと環境変数
+- **🎯 対話型デプロイ**: `npm run deploy:interactive`によるオプションの対話型デプロイウィザード
+- **📦 自動検出**: ESパッケージとライセンスファイルを自動検出
+- **🔧 ESインストール修正**: ESインストール中にSplunkが確実に動作するよう修正
+- **⚡ NPMスクリプト**: 便利なデプロイショートカット追加（`deploy:basic`、`deploy:es`、`deploy:production`）
+- **📝 ライセンス管理**: 自動検出とクラスターマネージャーをライセンスマスターとして使用する改善されたライセンスインストール
+- **🔄 Init.dブート管理**: より信頼性の高いブート起動設定のためにsystemdからinit.dへ移行
+- **✅ ユーザー作成修正**: 適切なクラスター参加を確保するための管理者ユーザー作成タイミングを修正
 
 ### トラブルシューティング
 
@@ -1355,6 +1470,52 @@ Splunk Webで「Oops. Page not found!」エラーが表示される場合：
    - 失敗したインスタンスを終了
    - Auto Scaling Groupに代替インスタンスを作成させる（インデクサーの場合）
    - 単一インスタンスの場合、スタックを更新して再作成をトリガー
+
+#### Enterprise Securityインストールの問題
+
+ESが正しくインストールされていない場合：
+
+1. **ESパッケージの存在確認**
+   ```bash
+   ls -la packages/splunk-enterprise-security*.spl
+   ```
+
+2. **デプロイがESに設定されているか確認**
+   ```bash
+   # CloudFormationパラメータにenableES=trueが表示されるはず
+   aws cloudformation describe-stacks --stack-name SelfManagedSplunk-ES
+   ```
+
+3. **インストールログの確認**
+   ```bash
+   # ESサーチヘッドに接続
+   aws ssm start-session --target <es-instance-id>
+   # ログを確認
+   sudo grep "Enterprise Security" /var/log/cloud-init-output.log
+   ```
+
+#### ライセンスインストールの問題
+
+ライセンスが正しく設定されていない場合：
+
+1. **ライセンスファイルの存在確認**
+   ```bash
+   ls -la licenses/*.License
+   ```
+
+2. **ライセンスインストールが有効か確認**
+   ```bash
+   # enableLicenseコンテキストパラメータを確認
+   npx cdk context --json | grep enableLicense
+   ```
+
+3. **クラスターマネージャーで確認**
+   ```bash
+   # クラスターマネージャーに接続
+   aws ssm start-session --target <cm-instance-id>
+   # ライセンスを確認
+   sudo -u splunk /opt/splunk/bin/splunk list licenses -auth admin:<password>
+   ```
 
 ### サポート
 

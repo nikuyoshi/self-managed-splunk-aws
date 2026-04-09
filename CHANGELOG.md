@@ -14,6 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### [Unreleased]
 
 #### Added
+- 🔒 **Let's Encrypt Certificate Support**: Added support for browser-trusted HTTPS certificates
+  - Automatic Let's Encrypt certificate generation using certbot
+  - sslip.io domain integration for automatic DNS resolution
+  - Required email address validation for Let's Encrypt registration
+  - Automatic certificate renewal via cron job (90-day cycle)
+  - Permission fixes for certificate files to ensure Splunk user access
+  - Context parameter `httpsType` to choose between self-signed and Let's Encrypt
+  - Interactive deployment wizard includes certificate type selection
+- 🔒 **HTTPS Support for Search Heads**: Implemented HTTPS with self-signed certificates for all Search Head instances
+  - Automatic self-signed certificate generation during instance initialization
+  - HTTPS on port 8443 for both regular Search Head and ES Search Head
+  - Certificate CN automatically set to instance's public IP
+  - Security group rules updated to allow port 8443
+  - Web UI URLs in CloudFormation outputs updated to HTTPS
 - 🔑 **AWS Profile Support in Interactive Deployment**: Interactive deployment wizard now includes AWS profile selection
   - Automatically detects available AWS profiles using `aws configure list-profiles`
   - Allows selection of specific profile or use of environment variables
@@ -155,6 +169,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### [未リリース]
 
 #### 追加
+- 🔒 **Search HeadのHTTPSサポート**: すべてのSearch Headインスタンスに自己署名証明書でHTTPSを実装
+  - インスタンス初期化時に自動的に自己署名証明書を生成
+  - 通常のSearch HeadとES Search Headの両方でポート8443でHTTPS
+  - 証明書のCNはインスタンスのパブリックIPに自動設定
+  - セキュリティグループルールをポート8443を許可するよう更新
+  - CloudFormation出力のWeb UI URLをHTTPSに更新
 - 🔑 **対話型デプロイでのAWSプロファイルサポート**: 対話型デプロイウィザードにAWSプロファイル選択機能を追加
   - `aws configure list-profiles`を使用して利用可能なプロファイルを自動検出
   - 特定のプロファイルまたは環境変数の使用を選択可能

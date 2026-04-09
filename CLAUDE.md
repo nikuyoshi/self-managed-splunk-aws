@@ -435,6 +435,14 @@ npx cdk deploy --all --profile <your-profile-name>
 # Enterprise Security有効化してデプロイ
 npx cdk deploy --all --context enableES=true
 
+# Let's Encrypt証明書でデプロイ（ブラウザ警告なし）
+npx cdk deploy --all \
+  --context httpsType=letsencrypt \
+  --context letsencryptEmail=your-email@example.com
+
+# 対話型デプロイ（推奨）
+npm run deploy:interactive
+
 # テストの実行
 npm test
 
@@ -470,6 +478,13 @@ npm run typecheck
 
 詳細な変更履歴は[CHANGELOG.md](./CHANGELOG.md)を参照してください。
 
+#### v1.2.0での主な機能追加（2025年1月）
+- **Let's Encrypt証明書サポート**: ブラウザ警告を回避するHTTPS証明書の自動取得
+- **HTTPSタイプ選択**: self-signed（デフォルト）またはLet's Encrypt証明書の選択
+- **sslip.ioドメイン統合**: Let's Encrypt用の自動ドメイン生成
+- **メールアドレスプロンプト**: Let's Encrypt証明書用のメールアドレス入力機能
+- **証明書自動更新**: Let's Encrypt証明書の自動更新設定（90日周期）
+
 #### v1.1.0での主な機能追加
 - **柔軟なデプロイメントオプション**: コンテキストパラメータと環境変数による設定のカスタマイズ
 - **対話型デプロイメント**: `npm run deploy:interactive`による設定ウィザード
@@ -481,6 +496,7 @@ npm run typecheck
 - **Elastic IPアーキテクチャ**: ALB廃止による月額約$40のコスト削減
 - **Network Load Balancer**: S2S/HEC用のNLB実装による高可用性の実現
 - **splunkユーザー実行**: セキュリティベストプラクティスの適用
+- **HTTPS証明書改善**: Let's Encrypt証明書によるブラウザ警告の解消
 
 ### 検証環境としての利用シナリオ
 このプロジェクトは検証環境として以下の用途で活用できます：
@@ -545,6 +561,27 @@ UserDataスクリプト内のヒアドキュメントで変数展開が正しく
    # 確認後、user-seed.confを削除
    sudo -u splunk rm -f /opt/splunk/etc/system/local/user-seed.conf
    ```
+
+### HTTPS証明書の問題
+
+#### Let's Encrypt証明書が機能しない問題
+
+##### 症状
+- ブラウザでHTTPSアクセス時にタイムアウト
+- 証明書エラーが表示される
+
+##### 原因と解決方法
+1. **権限の問題**
+   - Let's Encryptの秘密鍵ファイル（privkey.pem）のパーミッションが600の場合、splunkユーザーが読み取れない
+   - 解決: `chmod 644 /etc/letsencrypt/archive/<domain>/privkey*.pem`
+
+2. **ドメインの選択**
+   - nip.ioはレート制限に達しやすい（168時間で10000証明書）
+   - 解決: sslip.ioドメインを使用（CDKコードはデフォルトでsslip.io使用）
+
+3. **メールアドレス未設定**
+   - Let's Encryptには有効なメールアドレスが必要
+   - 解決: デプロイ時に`--context letsencryptEmail=your-email@example.com`を指定
 
 ### デバッグのヒント
 

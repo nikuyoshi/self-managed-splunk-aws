@@ -127,6 +127,29 @@ async function interactiveDeploy() {
     },
     {
       type: 'list',
+      name: 'httpsType',
+      message: 'Select HTTPS certificate type for Search Heads:',
+      choices: [
+        { name: 'Self-signed certificate (Quick setup, browser warning)', value: 'self-signed' },
+        { name: 'Let\'s Encrypt certificate (No browser warning, requires email)', value: 'letsencrypt' }
+      ],
+      default: 'letsencrypt'
+    },
+    {
+      type: 'input',
+      name: 'letsencryptEmail',
+      message: 'Enter email address for Let\'s Encrypt certificate:',
+      validate: (input) => {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (emailRegex.test(input)) {
+          return true;
+        }
+        return 'Please enter a valid email address';
+      },
+      when: (answers) => answers.httpsType === 'letsencrypt'
+    },
+    {
+      type: 'list',
       name: 'region',
       message: 'Select AWS region:',
       choices: [
@@ -194,6 +217,11 @@ function displayConfiguration(config) {
   console.log(`\n📦 Components:`);
   console.log(`  • Enterprise Security: ${config.enableES ? '✅ Yes' : '❌ No'}`);
   console.log(`  • Enterprise License: ${config.enableLicense ? '✅ Yes' : '❌ No'}`);
+  console.log(`\n🔒 HTTPS Configuration:`);
+  console.log(`  • Certificate Type: ${config.httpsType === 'letsencrypt' ? "Let's Encrypt (No browser warning)" : 'Self-signed (Browser warning)'}`);
+  if (config.httpsType === 'letsencrypt') {
+    console.log(`  • Let's Encrypt Email: ${config.letsencryptEmail}`);
+  }
   console.log(`\n🖥️  Deployment Size: ${config.deploymentSize ? config.deploymentSize.toUpperCase() : 'MEDIUM'}`);
   
   // Display configuration based on deployment size
@@ -234,6 +262,10 @@ async function deployStack(config) {
   args.push('--context', `enableES=${config.enableES}`);
   args.push('--context', `enableLicense=${config.enableLicense}`);
   args.push('--context', `deploymentSize=${config.deploymentSize || 'medium'}`);
+  args.push('--context', `httpsType=${config.httpsType || 'self-signed'}`);
+  if (config.httpsType === 'letsencrypt' && config.letsencryptEmail) {
+    args.push('--context', `letsencryptEmail=${config.letsencryptEmail}`);
+  }
   args.push('--context', 'skipConfirmation=true');
 
   // Set environment variables

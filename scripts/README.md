@@ -47,6 +47,33 @@ A script to destroy all CDK stacks in the correct order, handling dependencies a
 
 ---
 
+### apply-letsencrypt-to-existing.sh
+
+Applies Let's Encrypt certificates to all existing Search Head instances. Run this script **locally** — it auto-discovers instances from CloudFormation stack tags and applies the certificate via SSM Run Command. No SSH access required.
+
+**Usage:**
+```bash
+./scripts/apply-letsencrypt-to-existing.sh \
+  --email your-email@example.com \
+  [--profile <your-aws-profile>] \
+  [--region us-west-2]
+```
+
+**Options:**
+- `--email <email>`: Email address for Let's Encrypt registration (required)
+- `--profile <profile-name>`: AWS profile to use (optional)
+- `--region <region>`: AWS region (default: us-west-2)
+
+**What it does:**
+1. Auto-discovers Search Head and ES Search Head instances from `SelfManagedSplunk-SearchHead` and `SelfManagedSplunk-ES` stacks
+2. Sends the embedded certificate setup script to each instance via SSM Run Command
+3. On each instance: installs certbot, obtains a Let's Encrypt certificate for the `sslip.io` domain, configures Splunk web.conf, and sets up auto-renewal
+4. Waits for completion and displays the resulting `sslip.io` access URLs
+
+See [`docs/enable-https-existing-instances.md`](../docs/enable-https-existing-instances.md) for full instructions.
+
+---
+
 ## スクリプトディレクトリ
 
 このディレクトリには、Splunk Enterpriseデプロイメントを管理するためのユーティリティスクリプトが含まれています。
@@ -93,4 +120,33 @@ A script to destroy all CDK stacks in the correct order, handling dependencies a
 - 依存関係の問題でスタックが失敗した場合、後で自動的に再試行されます
 - その他の理由でスタックが失敗した場合、スクリプトはエラーで終了します
 - デバッグ用にすべての出力がログに記録されます
+
+---
+
+### apply-letsencrypt-to-existing.sh
+
+既存のSearch HeadインスタンスにLet's Encrypt証明書を適用するスクリプト。**ローカルマシンで実行**します。CloudFormationスタックタグからインスタンスIDを自動検出し、SSM Run Command経由で証明書を適用します。SSH不要。
+
+**使用方法:**
+```bash
+./scripts/apply-letsencrypt-to-existing.sh \
+  --email your-email@example.com \
+  [--profile <your-aws-profile>] \
+  [--region us-west-2]
+```
+
+**オプション:**
+- `--email <email>`: Let's Encrypt登録用メールアドレス（必須）
+- `--profile <profile-name>`: AWSプロファイル（省略可）
+- `--region <region>`: AWSリージョン（デフォルト: us-west-2）
+
+**動作内容:**
+1. `SelfManagedSplunk-SearchHead` および `SelfManagedSplunk-ES` スタックのタグからインスタンスIDを自動検出
+2. 証明書セットアップスクリプトを埋め込みでSSM Run Commandを通じて各インスタンスに送信
+3. 各インスタンスで: certbotのインストール、sslip.ioドメイン用Let's Encrypt証明書の取得、Splunk web.confの設定、自動更新の設定
+4. 完了を待機してsslip.ioアクセスURLを表示
+
+詳細は [`docs/enable-https-existing-instances.md`](../docs/enable-https-existing-instances.md) を参照してください。
+
+---
 
