@@ -678,7 +678,18 @@ Error: Failed to destroy SelfManagedSplunk-SearchHead: CREATE_COMPLETE
 
 #### 502 Bad Gateway Error
 
-If you see this error when accessing Splunk Web, wait 3-5 minutes for services to start fully.
+If you see this error when accessing Splunk Web, wait 3-5 minutes for services to start fully. If the error persists, check the instance logs as described in "Splunk Won't Start" below.
+
+#### Splunk Won't Start
+
+- Check the security group settings of the instance
+- Connect to the instance via Session Manager and check the logs:
+  ```bash
+  # UserData execution log
+  sudo tail -100 /var/log/cloud-init-output.log
+  # Splunk log
+  sudo tail -100 /opt/splunk/var/log/splunk/splunkd.log
+  ```
 
 #### Page Not Found Error
 
@@ -765,6 +776,10 @@ If license is not properly configured:
    # Check licenses
    sudo -u splunk /opt/splunk/bin/splunk list licenses -auth admin:<password>
    ```
+
+### Support
+
+If you encounter any issues, please create a GitHub Issue.
 
 ---
 
@@ -1425,12 +1440,18 @@ Error: Failed to destroy SelfManagedSplunk-SearchHead: CREATE_COMPLETE
 ```
 
 #### 502 Bad Gateway エラー
-- Search Headの起動に数分かかることがあります
-- CloudWatch Logsで`/aws/ec2/instance`を確認してください
+- Search Headの起動に数分かかることがあります。3〜5分待ってから再度アクセスしてください
+- 解消しない場合は、下の「Splunkが起動しない」の手順でログを確認してください
 
 #### Splunkが起動しない
 - インスタンスのセキュリティグループ設定を確認
-- CloudWatch Logsでエラーメッセージを確認
+- Session Manager でインスタンスに接続し、ログを確認
+  ```bash
+  # UserDataの実行ログ
+  sudo tail -100 /var/log/cloud-init-output.log
+  # Splunkのログ
+  sudo tail -100 /opt/splunk/var/log/splunk/splunkd.log
+  ```
 
 #### Page not found エラー
 
